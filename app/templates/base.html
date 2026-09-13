@@ -26,6 +26,14 @@
         <span class="lamp play"></span>
         <span class="val" id="piano-state">on piano</span>
       </a>
+      <button class="icon-btn cog" id="open-settings" title="Settings"
+              aria-label="Settings" aria-haspopup="dialog">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
       {% if request.app.state.auth.enabled %}
       <a href="/logout" class="nav-link">Sign out</a>
       {% endif %}
@@ -36,6 +44,85 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+
+<dialog class="sheet" id="settings-dialog" aria-labelledby="settings-title">
+  <form method="dialog" class="sheet-inner" id="settings-form">
+    <div class="sheet-head">
+      <h2 id="settings-title">Settings</h2>
+      <button class="icon-btn" value="cancel" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="sheet-body">
+      <section class="fieldset">
+        <h3>Recording</h3>
+
+        <label class="row-field">
+          <span class="label">Idle timeout</span>
+          <span class="control">
+            <input type="number" id="set-idle" min="3" max="3600" step="1"> <em>seconds</em>
+          </span>
+          <span class="hint">Silence this long ends a session and files it as its own idea.
+            Lower it if separate ideas keep getting merged; raise it if one idea keeps
+            getting split in half.</span>
+        </label>
+
+        <label class="row-field">
+          <span class="label">Minimum notes</span>
+          <span class="control">
+            <input type="number" id="set-min-notes" min="0" max="200" step="1"> <em>notes</em>
+          </span>
+          <span class="hint">Takes with fewer notes are discarded, so brushing a key does
+            not litter the library.</span>
+        </label>
+
+        <label class="row-field">
+          <span class="label">Minimum length</span>
+          <span class="control">
+            <input type="number" id="set-min-seconds" min="0" max="120" step="0.5"> <em>seconds</em>
+          </span>
+          <span class="hint">Takes shorter than this are discarded too.</span>
+        </label>
+
+        <label class="row-field">
+          <span class="label">Device filter</span>
+          <span class="control wide">
+            <input type="text" id="set-device" placeholder="any connected instrument">
+          </span>
+          <span class="hint">Only use MIDI ports whose name contains this. Leave empty to
+            use whatever is connected. Applies within a few seconds.</span>
+        </label>
+      </section>
+
+      <section class="fieldset">
+        <h3>Playing on the instrument</h3>
+        <label class="row-field check">
+          <span class="control">
+            <input type="checkbox" id="set-capture-during">
+            <span class="label">Keep recording while playing to the instrument</span>
+          </span>
+          <span class="hint">Off by default. Many digital pianos echo MIDI in back out of
+            MIDI out, which would make the app record its own playback in a loop. Turn this
+            on only if yours does not echo and you want to play along.</span>
+        </label>
+      </section>
+
+      <section class="fieldset">
+        <h3>Set in .env <span class="muted-tag">restart required</span></h3>
+        <div class="readonly-grid" id="set-readonly"></div>
+      </section>
+    </div>
+
+    <div class="sheet-foot">
+      <button class="btn ghost" type="button" id="settings-reset">Reset to .env</button>
+      <span style="flex:1"></span>
+      <button class="btn" value="cancel">Cancel</button>
+      <button class="btn primary" type="button" id="settings-save">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <div class="toasts" id="toasts"></div>
 <script src="{{ static('js/app.js') }}"></script>

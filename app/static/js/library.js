@@ -285,15 +285,27 @@
 
   el.more.addEventListener('click', () => load(false));
 
-  // A take finished while you were looking at the library: slide it in.
+  // A take finished while you were looking at the library.
+  //
+  // When the list is unfiltered and newest-first, the new session belongs at the
+  // top and can simply be slid in. Under any other view its position depends on
+  // the filters and sort, so re-run the query instead -- otherwise a filtered
+  // page silently never updates, and you only find the take by reloading.
   document.addEventListener('midi:session_saved', (e) => {
     const session = e.detail.session;
     if (!session) return;
     refreshTags();
-    if (location.search) { toast('New recording saved'); return; }
 
-    const existing = el.list.querySelector('[data-id="' + session.id + '"]');
-    if (existing) return;
+    const unfiltered = !el.q.value.trim() && !el.from.value && !el.to.value
+      && !el.duration.value && !el.fav.classList.contains('on')
+      && state.tags.size === 0;
+
+    if (!unfiltered || el.sort.value !== 'date:desc') {
+      load(true);
+      return;
+    }
+
+    if (el.list.querySelector('[data-id="' + session.id + '"]')) return;
     el.list.querySelector('.empty')?.remove();
 
     const row = addRow(session, 'top');
@@ -301,6 +313,13 @@
     state.total += 1;
     paintCount();
     toast('Saved “' + session.name + '”');
+  });
+
+  // Catch up on anything missed: the live connection dropped, or the tab was in
+  // the background (phones and tablets suspend timers and sockets aggressively).
+  document.addEventListener('midi:reconnected', () => { load(true); refreshTags(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { load(true); refreshTags(); }
   });
 
   readUrl();

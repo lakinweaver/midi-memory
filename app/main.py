@@ -12,12 +12,14 @@ from fastapi.templating import Jinja2Templates
 
 from app.api import playback as playback_api
 from app.api import sessions as sessions_api
+from app.api import settings as settings_api
 from app.api import status as status_api
 from app.api import tags as tags_api
 from app.auth import Auth, is_public
 from app.config import Settings, get_settings
 from app.db import Database
 from app.events import EventBus
+from app.settings_store import SettingsStore
 from app.service import CaptureService
 
 log = logging.getLogger(__name__)
@@ -50,6 +52,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.settings = settings
+        # Apply saved runtime overrides before anything reads the settings.
+        app.state.settings_store = SettingsStore(settings)
+        app.state.settings_store.load()
         app.state.db = Database(settings.db_path)
         app.state.bus = EventBus()
         app.state.auth = Auth(
@@ -83,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(sessions_api.router)
     app.include_router(playback_api.router)
+    app.include_router(settings_api.router)
     app.include_router(tags_api.router)
     app.include_router(status_api.router)
 

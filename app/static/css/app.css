@@ -458,6 +458,76 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
   border: 1px solid rgba(224,72,63,.25); border-radius: var(--r-sm);
 }
 
+/* --------------------------------------------------------------- settings -- */
+.icon-btn.cog { width: 28px; height: 28px; color: var(--muted); }
+.icon-btn.cog:hover { color: var(--amber-hot); background: var(--surface-2); }
+.icon-btn.cog svg { transition: transform .35s var(--ease); }
+.icon-btn.cog:hover svg { transform: rotate(45deg); }
+
+.sheet {
+  border: 0; padding: 0; background: none; color: var(--cream);
+  max-width: 560px; width: calc(100% - 32px); max-height: 86vh;
+}
+.sheet::backdrop { background: rgba(8,7,6,.72); backdrop-filter: blur(3px); }
+.sheet-inner {
+  display: flex; flex-direction: column; max-height: 86vh;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: 0 24px 70px -20px rgba(0,0,0,.9);
+  animation: rise .25s var(--ease) both;
+}
+
+.sheet-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 18px; border-bottom: 1px solid var(--line-soft);
+}
+.sheet-head h2 {
+  margin: 0; flex: 1; font-family: var(--display); font-size: 21px; font-weight: 600;
+  font-variation-settings: 'SOFT' 30, 'WONK' 1, 'opsz' 30; letter-spacing: -.02em;
+}
+.sheet-body { padding: 4px 18px 18px; overflow-y: auto; }
+.sheet-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 13px 18px; border-top: 1px solid var(--line-soft);
+}
+
+.fieldset { padding: 16px 0 4px; border-bottom: 1px solid var(--line-soft); }
+.fieldset:last-child { border-bottom: 0; }
+.fieldset h3 {
+  margin: 0 0 12px; font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--faint); font-weight: 400;
+  display: flex; align-items: center; gap: 8px;
+}
+.muted-tag {
+  font-size: 9px; letter-spacing: .1em; color: var(--amber-deep);
+  border: 1px solid var(--line); border-radius: 100px; padding: 2px 7px;
+}
+
+.row-field { display: block; margin-bottom: 16px; cursor: default; }
+.row-field .label { display: block; font-size: 13px; color: var(--cream); margin-bottom: 6px; }
+.row-field .control { display: flex; align-items: center; gap: 8px; }
+.row-field .control em {
+  font-style: normal; font-size: 11px; color: var(--muted); letter-spacing: .04em;
+}
+.row-field input[type="number"], .row-field input[type="text"] {
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 0 10px; height: 34px;
+  font-size: 13px; width: 96px;
+}
+.row-field .control.wide input { width: 100%; }
+.row-field input:focus { border-color: var(--amber-deep); }
+.row-field .hint {
+  display: block; margin-top: 6px; font-size: 11px; line-height: 1.6; color: var(--muted);
+}
+.row-field.check .control { align-items: flex-start; gap: 10px; }
+.row-field.check .label { margin-bottom: 0; }
+.row-field.check input[type="checkbox"] {
+  width: 16px; height: 16px; accent-color: var(--amber); margin-top: 1px; cursor: pointer;
+}
+
+.readonly-grid { display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; font-size: 12px; }
+.readonly-grid dt { color: var(--muted); }
+.readonly-grid dd { margin: 0; color: var(--cream-dim); font-variant-numeric: tabular-nums; }
+
 /* ---------------------------------------------------------------- toasts -- */
 .toasts {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);

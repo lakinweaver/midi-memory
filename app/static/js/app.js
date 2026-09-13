@@ -100,6 +100,7 @@
 
     let source = null;
     let retry = 1000;
+    let wasDropped = false;
 
     function paintDevice(connected, name) {
       lampDevice.classList.toggle('on', !!connected);
@@ -109,15 +110,27 @@
 
     function paintRecording(recording, noteCount) {
       lampRec.classList.toggle('rec', !!recording);
-      recState.textContent = recording
-        ? 'recording' + (noteCount ? ' · ' + noteCount : '')
-        : 'idle';
+      if (!recording) { recState.textContent = 'idle'; return; }
+      // The count is for the session in progress, so it holds steady once you
+      // stop playing -- the label is what makes that read as a tally, not a timer.
+      const n = Number(noteCount) || 0;
+      recState.textContent = n
+        ? 'recording · ' + n + (n === 1 ? ' note' : ' notes')
+        : 'recording';
     }
 
     function connect() {
       source = new EventSource('/api/stream');
 
-      source.onopen = () => { retry = 1000; };
+      source.onopen = () => {
+        retry = 1000;
+        // Anything that happened while we were disconnected was missed entirely,
+        // so tell the page to resync rather than silently drifting out of date.
+        if (wasDropped) {
+          wasDropped = false;
+          document.dispatchEvent(new CustomEvent('midi:reconnected'));
+        }
+      };
 
       source.onmessage = (e) => {
         let msg;
@@ -149,6 +162,7 @@
       };
 
       source.onerror = () => {
+        wasDropped = true;
         source.close();
         lampDevice.classList.remove('on');
         lampRec.classList.remove('rec');
@@ -163,6 +177,96 @@
     connect();
   }
 
+  /* -------------------------------------------------------------- settings -- */
+  function startSettings() {
+    const dialog = document.getElementById('settings-dialog');
+    const openBtn = document.getElementById('open-settings');
+    if (!dialog || !openBtn) return;
+
+    const f = {
+      idle: document.getElementById('set-idle'),
+      minNotes: document.getElementById('set-min-notes'),
+      minSeconds: document.getElementById('set-min-seconds'),
+      device: document.getElementById('set-device'),
+      captureDuring: document.getElementById('set-capture-during'),
+      readonly: document.getElementById('set-readonly'),
+      save: document.getElementById('settings-save'),
+      reset: document.getElementById('settings-reset'),
+    };
+
+    const READ_ONLY_LABELS = {
+      port: 'Port', host: 'Bind address', data_dir: 'Data directory',
+      midi_source: 'Input backend', midi_sink: 'Output backend',
+      auth_enabled: 'Password set',
+    };
+
+    function fill(payload) {
+      const s = payload.settings;
+      f.idle.value = s.idle_seconds;
+      f.minNotes.value = s.min_notes;
+      f.minSeconds.value = s.min_seconds;
+      f.device.value = s.device_match || '';
+      f.captureDuring.checked = !!s.capture_during_playback;
+
+      const rows = Object.entries(READ_ONLY_LABELS).map(([key, label]) => {
+        let value = payload.read_only[key];
+        if (typeof value === 'boolean') value = value ? 'yes' : 'no';
+        return '<dt>' + label + '</dt><dd>' + escapeHtml(value) + '</dd>';
+      });
+      // What is actually plugged in matters more than what was configured.
+      const input = payload.input.connected ? payload.input.port_name : 'not connected';
+      const output = payload.output.connected ? payload.output.port_name : 'not connected';
+      rows.push('<dt>Keyboard</dt><dd>' + escapeHtml(input) + '</dd>');
+      rows.push('<dt>Instrument</dt><dd>' + escapeHtml(output) + '</dd>');
+      f.readonly.innerHTML = rows.join('');
+    }
+
+    async function open() {
+      try {
+        fill(await api('/api/settings'));
+        dialog.showModal();
+      } catch (err) { toast(err.message, 'error'); }
+    }
+
+    async function save() {
+      const body = {
+        idle_seconds: parseFloat(f.idle.value),
+        min_notes: parseInt(f.minNotes.value, 10),
+        min_seconds: parseFloat(f.minSeconds.value),
+        device_match: f.device.value,
+        capture_during_playback: f.captureDuring.checked,
+      };
+      for (const [key, value] of Object.entries(body)) {
+        if (typeof value === 'number' && Number.isNaN(value)) {
+          toast('“' + key.replace(/_/g, ' ') + '” needs a number', 'error');
+          return;
+        }
+      }
+      try {
+        fill(await api('/api/settings', { method: 'PUT', body: JSON.stringify(body) }));
+        toast('Settings saved');
+        dialog.close();
+      } catch (err) { toast(err.message, 'error'); }
+    }
+
+    async function reset() {
+      if (!confirm('Discard these settings and go back to the .env values?\n\n'
+                   + 'The .env values take effect after the service restarts.')) return;
+      try {
+        fill(await api('/api/settings/reset', { method: 'POST' }));
+        toast('Reset — restart the service to pick up .env');
+      } catch (err) { toast(err.message, 'error'); }
+    }
+
+    openBtn.addEventListener('click', open);
+    f.save.addEventListener('click', save);
+    f.reset.addEventListener('click', reset);
+    // Enter anywhere in the form should save, not silently dismiss the dialog.
+    dialog.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); save(); }
+    });
+  }
+
   window.MM = { api, toast, formatDuration, formatDate, noteName, escapeHtml };
-  document.addEventListener('DOMContentLoaded', startConsole);
+  document.addEventListener('DOMContentLoaded', () => { startConsole(); startSettings(); });
 })();

@@ -103,6 +103,14 @@ sudo systemctl restart midi-memory    # after changing .env
 
 Everything is set through environment variables or `.env` — see `.env.example`.
 
+The settings most worth tuning are also editable from the web UI, behind the cogwheel in
+the header: idle timeout, the minimum-size thresholds, the device filter, and whether to
+keep recording while playing to the instrument. Those changes take effect immediately —
+on the next recorded note, with no restart — and are saved to `settings.json` in the data
+directory, which is layered on top of `.env` at startup. Everything else (port, password,
+data directory, which MIDI backend) is shown read-only there, since changing it needs a
+restart. "Reset to .env" discards the overrides.
+
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `MIDI_MEMORY_PASSWORD` | *(empty)* | Shared password for the web UI. Empty disables login. |
