@@ -53,6 +53,12 @@ The installer sets up the virtualenv, installs system packages, creates `/var/li
 generates a random password into `.env`, and installs and starts a systemd service so
 recording resumes automatically on every boot. It is safe to re-run to upgrade.
 
+**Run it as yourself, not with `sudo`.** The script calls `sudo` for the handful of
+steps that need it (apt, systemd, `/var/lib`). Running the whole thing as root creates
+the virtualenv and `.env` owned by root inside your home directory, and the service —
+which runs as you — then cannot read them. If you already did this, the script detects
+and repairs the ownership on the next run.
+
 If the install fails partway — a flaky Pi wifi connection timing out against apt or
 PyPI is the usual cause — just re-run it. The script is idempotent and resumes: packages
 already installed are skipped, and samples already downloaded are not fetched again. To
@@ -62,6 +68,16 @@ skip the sample download entirely, `SKIP_SAMPLES=1 ./scripts/install_pi.sh`.
 from Debian's. Raspberry Pi OS marks the system Python as externally managed (PEP 668),
 so `pip install` into it is refused without `--break-system-packages`, and overriding
 that can break `apt`'s own Python tooling. The venv costs about 15 MB.
+
+### "Permission denied" on .env
+
+An earlier `sudo ./scripts/install_pi.sh` left root-owned files behind. Reclaim them and
+re-run without sudo:
+
+```bash
+sudo chown -R $USER:$USER ~/midi-memory
+cd ~/midi-memory && ./scripts/install_pi.sh
+```
 
 ### If the web interface will not load
 

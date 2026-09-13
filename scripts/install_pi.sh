@@ -36,9 +36,27 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 1
 fi
 
-if [[ "$RUN_USER" == "root" ]]; then
-  warn "Run this as your normal user (it will call sudo where needed), not as root."
+# Test the EFFECTIVE user, not $SUDO_USER. Running this under sudo sets
+# SUDO_USER to your own name, so checking that would wave sudo straight through
+# -- and then every file the script creates (.venv, .env, the egg-info) is owned
+# by root inside your home directory, which the service, running as you, cannot
+# read.
+if [[ $EUID -eq 0 ]]; then
+  warn "Do not run this with sudo or as root -- it calls sudo itself where needed."
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    warn "Run it as yourself instead:"
+    warn "    exit  # leave this root shell, or drop the sudo"
+    warn "    cd ${APP_DIR} && ./scripts/install_pi.sh"
+  fi
   exit 1
+fi
+
+# An earlier sudo run leaves root-owned files behind that this run cannot
+# overwrite -- the usual symptom is a permission error on .env. Repair rather
+# than dying, since we already use sudo for apt and systemd anyway.
+if find "$APP_DIR" -maxdepth 2 ! -user "$RUN_USER" -print -quit 2>/dev/null | grep -q .; then
+  say "Reclaiming files left owned by another user (likely an earlier sudo run)"
+  sudo chown -R "$RUN_USER":"$RUN_USER" "$APP_DIR"
 fi
 
 # ---------------------------------------------------------------- packages --
@@ -102,6 +120,14 @@ sudo mkdir -p "$DATA_DIR"
 sudo chown -R "$RUN_USER":"$RUN_USER" "$DATA_DIR"
 
 # -------------------------------------------------------------------- config --
+if [[ -f .env && ! -w .env ]]; then
+  warn ".env exists but is not writable by $RUN_USER:"
+  ls -l .env >&2
+  warn "Fix the ownership and re-run:"
+  warn "    sudo chown $RUN_USER:$RUN_USER $APP_DIR/.env"
+  exit 1
+fi
+
 if [[ ! -f .env ]]; then
   say "Creating .env"
   PASSWORD="$(head -c 9 /dev/urandom | base64 | tr -d '/+=' | head -c 12)"
