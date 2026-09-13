@@ -19,7 +19,6 @@ class SettingsUpdate(BaseModel):
     idle_seconds: Optional[float] = Field(default=None, ge=3, le=3600)
     min_notes: Optional[int] = Field(default=None, ge=0, le=200)
     min_seconds: Optional[float] = Field(default=None, ge=0, le=120)
-    capture_during_playback: Optional[bool] = None
     device_match: Optional[str] = Field(default=None, max_length=100)
 
 
@@ -32,7 +31,6 @@ def _payload(request: Request) -> dict:
         "input": {"connected": service.source.connected,
                   "port_name": service.source.port_name,
                   "kind": service.source.kind},
-        "output": service.sink.status(),
     }
 
 

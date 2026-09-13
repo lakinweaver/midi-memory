@@ -79,24 +79,7 @@
     const lampRec = document.getElementById('lamp-rec');
     const deviceName = document.getElementById('device-name');
     const recState = document.getElementById('rec-state');
-    const pianoReadout = document.getElementById('piano-readout');
     if (!lampDevice) return;
-
-    // The instrument is shared, so playback is visible (and stoppable) from any
-    // page, not just the session that started it.
-    function paintPlayback(playback) {
-      if (!pianoReadout) return;
-      pianoReadout.hidden = !(playback && playback.playing);
-    }
-
-    if (pianoReadout) {
-      pianoReadout.addEventListener('click', async (e) => {
-        e.preventDefault();
-        try {
-          paintPlayback(await api('/api/playback/stop', { method: 'POST' }));
-        } catch (err) { toast(err.message, 'error'); }
-      });
-    }
 
     let source = null;
     let retry = 1000;
@@ -140,10 +123,6 @@
           case 'status':
             paintDevice(msg.connected, msg.port_name);
             paintRecording(msg.recording, msg.current_note_count);
-            paintPlayback(msg.playback);
-            break;
-          case 'playback':
-            paintPlayback(msg.playback);
             break;
           case 'device_status':
             paintDevice(msg.connected, msg.port_name);
@@ -166,7 +145,6 @@
         source.close();
         lampDevice.classList.remove('on');
         lampRec.classList.remove('rec');
-        paintPlayback(null);
         deviceName.textContent = 'reconnecting…';
         // Back off so a Pi that is rebooting isn't hammered.
         retry = Math.min(retry * 2, 15000);
@@ -188,7 +166,6 @@
       minNotes: document.getElementById('set-min-notes'),
       minSeconds: document.getElementById('set-min-seconds'),
       device: document.getElementById('set-device'),
-      captureDuring: document.getElementById('set-capture-during'),
       readonly: document.getElementById('set-readonly'),
       save: document.getElementById('settings-save'),
       reset: document.getElementById('settings-reset'),
@@ -196,8 +173,7 @@
 
     const READ_ONLY_LABELS = {
       port: 'Port', host: 'Bind address', data_dir: 'Data directory',
-      midi_source: 'Input backend', midi_sink: 'Output backend',
-      auth_enabled: 'Password set',
+      midi_source: 'Input backend', auth_enabled: 'Password set',
     };
 
     function fill(payload) {
@@ -206,7 +182,6 @@
       f.minNotes.value = s.min_notes;
       f.minSeconds.value = s.min_seconds;
       f.device.value = s.device_match || '';
-      f.captureDuring.checked = !!s.capture_during_playback;
 
       const rows = Object.entries(READ_ONLY_LABELS).map(([key, label]) => {
         let value = payload.read_only[key];
@@ -215,9 +190,7 @@
       });
       // What is actually plugged in matters more than what was configured.
       const input = payload.input.connected ? payload.input.port_name : 'not connected';
-      const output = payload.output.connected ? payload.output.port_name : 'not connected';
       rows.push('<dt>Keyboard</dt><dd>' + escapeHtml(input) + '</dd>');
-      rows.push('<dt>Instrument</dt><dd>' + escapeHtml(output) + '</dd>');
       f.readonly.innerHTML = rows.join('');
     }
 
@@ -234,7 +207,6 @@
         min_notes: parseInt(f.minNotes.value, 10),
         min_seconds: parseFloat(f.minSeconds.value),
         device_match: f.device.value,
-        capture_during_playback: f.captureDuring.checked,
       };
       for (const [key, value] of Object.entries(body)) {
         if (typeof value === 'number' && Number.isNaN(value)) {

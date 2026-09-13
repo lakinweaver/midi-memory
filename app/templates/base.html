@@ -21,11 +21,6 @@
         <span class="lamp" id="lamp-rec"></span>
         <span class="val" id="rec-state">idle</span>
       </div>
-      <a class="readout piano-readout" id="piano-readout" href="#" hidden
-         title="Playing on the instrument - click to stop">
-        <span class="lamp play"></span>
-        <span class="val" id="piano-state">on piano</span>
-      </a>
       <button class="icon-btn cog" id="open-settings" title="Settings"
               aria-label="Settings" aria-haspopup="dialog">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -96,18 +91,6 @@
         </label>
       </section>
 
-      <section class="fieldset">
-        <h3>Playing on the instrument</h3>
-        <label class="row-field check">
-          <span class="control">
-            <input type="checkbox" id="set-capture-during">
-            <span class="label">Keep recording while playing to the instrument</span>
-          </span>
-          <span class="hint">Off by default. Many digital pianos echo MIDI in back out of
-            MIDI out, which would make the app record its own playback in a loop. Turn this
-            on only if yours does not echo and you want to play along.</span>
-        </label>
-      </section>
 
       <section class="fieldset">
         <h3>Set in .env <span class="muted-tag">restart required</span></h3>

@@ -5,6 +5,7 @@ the web request threads never share one. WAL keeps readers from blocking the wri
 """
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 from contextlib import contextmanager
@@ -14,7 +15,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 
 from app.midi.recorder import SessionRecord
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     highest_note INTEGER,
     avg_velocity REAL,
     device_name  TEXT    NOT NULL DEFAULT '',
+    fingerprint  TEXT,
     favorite     INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL
@@ -85,6 +87,11 @@ class Database:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA synchronous = NORMAL")
             conn.executescript(_SCHEMA)
+            # Databases created before the pitch strips were precomputed need the
+            # column added; the rows are backfilled in the background at startup.
+            columns = {r["name"] for r in conn.execute("PRAGMA table_info(sessions)")}
+            if "fingerprint" not in columns:
+                conn.execute("ALTER TABLE sessions ADD COLUMN fingerprint TEXT")
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     # -- writes --------------------------------------------------------------
@@ -96,8 +103,8 @@ class Database:
                 INSERT OR REPLACE INTO sessions
                     (id, started_at, ended_at, duration_ms, name, notes, event_count,
                      note_count, lowest_note, highest_note, avg_velocity, device_name,
-                     favorite, created_at, updated_at)
-                VALUES (?,?,?,?,?,'',?,?,?,?,?,?,
+                     fingerprint, favorite, created_at, updated_at)
+                VALUES (?,?,?,?,?,'',?,?,?,?,?,?,?,
                         COALESCE((SELECT favorite FROM sessions WHERE id = ?), 0), ?, ?)
                 """,
                 (
@@ -112,6 +119,7 @@ class Database:
                     record.highest_note,
                     record.avg_velocity,
                     record.device_name,
+                    json.dumps(record.fingerprint, separators=(",", ":")),
                     record.id,
                     now,
                     now,
@@ -238,6 +246,7 @@ class Database:
             return None
         session = dict(row)
         session["favorite"] = bool(session["favorite"])
+        session["fingerprint"] = _decode_fingerprint(session.get("fingerprint"))
         session["tags"] = self.get_session_tags(session_id)
         return session
 
@@ -323,6 +332,7 @@ class Database:
             blob = item.pop("tag_blob", None)
             item["tags"] = sorted(blob.split("\x1f")) if blob else []
             item["favorite"] = bool(item["favorite"])
+            item["fingerprint"] = _decode_fingerprint(item.get("fingerprint"))
             items.append(item)
 
         return {
@@ -332,6 +342,24 @@ class Database:
             "offset": offset,
             "has_more": offset + len(items) < total,
         }
+
+    def ids_missing_fingerprint(self, limit: int = 500) -> list[str]:
+        """Newest first: those are what the library shows on the first screen,
+        so they should fill in before recordings nobody is looking at."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM sessions WHERE fingerprint IS NULL "
+                "ORDER BY started_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [r["id"] for r in rows]
+
+    def set_fingerprint(self, session_id: str, points: list) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE sessions SET fingerprint = ? WHERE id = ?",
+                (json.dumps(points, separators=(",", ":")), session_id),
+            )
 
     def stats(self) -> dict:
         with self.connect() as conn:
@@ -365,6 +393,15 @@ def _day_bound(value: str, end: bool) -> str:
         day = day.replace(hour=23, minute=59, second=59, microsecond=999_999)
     # A naive datetime is assumed to be local time by astimezone().
     return day.astimezone(timezone.utc).isoformat()
+
+
+def _decode_fingerprint(raw) -> list:
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return []
 
 
 def _iso(value: datetime) -> str:

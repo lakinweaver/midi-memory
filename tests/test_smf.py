@@ -85,3 +85,33 @@ def test_stats_summarise_the_performance():
 def test_stats_on_an_empty_recording_do_not_explode():
     stats = compute_stats([])
     assert stats["note_count"] == 0 and stats["lowest_note"] is None
+
+
+def test_fingerprint_is_small_and_ordered():
+    """The library sends one of these per row, so it has to stay compact."""
+    from app.midi.smf import fingerprint
+
+    events = []
+    for i in range(400):                       # a long, dense take
+        events.append(MidiEvent(i * 0.1, 0x90, 48 + (i % 36), 60 + (i % 60)))
+        events.append(MidiEvent(i * 0.1 + 0.08, 0x80, 48 + (i % 36), 0))
+
+    points = fingerprint(extract_notes(events))
+    assert 0 < len(points) <= 64, "dense takes are downsampled for the thumbnail"
+    assert points == sorted(points, key=lambda p: p[0]), "must be in time order"
+    for start, note, length, velocity in points:
+        assert 0 <= start <= 255 and 1 <= length <= 255
+        assert 0 <= note <= 127 and 0 <= velocity <= 127
+
+
+def test_fingerprint_keeps_every_note_of_a_short_take():
+    from app.midi.smf import fingerprint
+
+    events = [MidiEvent(0.0, 0x90, 60, 90), MidiEvent(0.5, 0x80, 60, 0),
+              MidiEvent(1.0, 0x90, 67, 80), MidiEvent(1.5, 0x80, 67, 0)]
+    assert len(fingerprint(extract_notes(events))) == 2
+
+
+def test_fingerprint_of_silence_is_empty():
+    from app.midi.smf import fingerprint
+    assert fingerprint([]) == []

@@ -196,6 +196,39 @@ def extract_notes(
     return notes
 
 
+FINGERPRINT_POINTS = 64
+
+
+def fingerprint(notes: Sequence[Note], max_points: int = FINGERPRINT_POINTS) -> list[list[int]]:
+    """A tiny sketch of a performance, for the library's pitch strips.
+
+    Each entry is [start, note, length, velocity] with time quantised to 0-255
+    across the session -- finer than the ~96px the strip is drawn at. Storing
+    this once means the library page needs a single request instead of one per
+    row to fetch full note lists it only ever draws as a thumbnail.
+    """
+    if not notes:
+        return []
+
+    end = max(n.start + n.duration for n in notes) or 1.0
+
+    # Take the loudest note from each of `max_points` time buckets: even coverage
+    # across the session, keeping whatever is most visually prominent in each.
+    buckets: dict[int, Note] = {}
+    for note in notes:
+        slot = min(max_points - 1, int(note.start / end * max_points))
+        current = buckets.get(slot)
+        if current is None or note.velocity > current.velocity:
+            buckets[slot] = note
+
+    out: list[list[int]] = []
+    for _, note in sorted(buckets.items()):
+        start = min(255, max(0, round(note.start / end * 255)))
+        length = min(255, max(1, round(note.duration / end * 255)))
+        out.append([start, note.note, length, note.velocity])
+    return out
+
+
 def compute_stats(events: Sequence[MidiEvent]) -> dict:
     """Summary figures stored alongside each session for display and filtering."""
     note_ons = [e for e in events if e.is_note_on]

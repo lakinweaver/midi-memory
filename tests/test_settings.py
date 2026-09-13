@@ -12,7 +12,6 @@ from app.settings_store import SettingsStore
 @pytest.fixture
 def client(settings):
     settings.midi_source = "none"
-    settings.midi_sink = "mock"
     with TestClient(create_app(settings)) as c:
         yield c
 
@@ -21,7 +20,7 @@ def test_defaults_are_reported(client):
     payload = client.get("/api/settings").json()
     assert payload["settings"]["idle_seconds"] == 45.0
     assert payload["settings"]["min_notes"] == 4
-    assert payload["read_only"]["midi_sink"] == "mock"
+    assert payload["read_only"]["midi_source"] == "none"
 
 
 def test_saving_changes_the_running_recorder(client):
@@ -33,15 +32,8 @@ def test_saving_changes_the_running_recorder(client):
     assert client.app.state.service.recorder.settings.idle_seconds == 12.5
 
 
-def test_capture_during_playback_takes_effect_immediately(client):
-    service = client.app.state.service
-    client.put("/api/settings", json={"capture_during_playback": True})
-    assert service.settings.capture_during_playback is True
-    assert service._suppress_capture() is False, "opting in disables suppression at once"
-
-
 def test_settings_survive_a_restart(settings):
-    settings.midi_source = settings.midi_sink = "none"
+    settings.midi_source = "none"
     with TestClient(create_app(settings)) as c:
         c.put("/api/settings", json={"idle_seconds": 30, "min_notes": 9})
 
@@ -92,6 +84,6 @@ def test_settings_require_login(auth_settings):
 
 @pytest.fixture
 def auth_settings(settings):
-    settings.midi_source = settings.midi_sink = "none"
+    settings.midi_source = "none"
     settings.password = "hunter2"
     return settings

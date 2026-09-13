@@ -75,26 +75,29 @@
   }
 
   /* ------------------------------------------------------------ rendering -- */
-  // A compact fingerprint of the performance: pitch over time, velocity as alpha.
-  function drawStrip(canvas, notes, lowest, highest) {
+  // The pitch strip is drawn from a fingerprint precomputed when the session was
+  // saved and sent inline with the listing: [start, note, length, velocity] with
+  // time quantised 0-255. Fetching full note lists per row meant one request per
+  // visible session, which is what made the library slow to open.
+  function drawStrip(canvas, points, lowest, highest) {
     const ratio = window.devicePixelRatio || 1;
     const w = canvas.clientWidth || 96, h = canvas.clientHeight || 40;
     canvas.width = w * ratio; canvas.height = h * ratio;
     const ctx = canvas.getContext('2d');
     ctx.scale(ratio, ratio);
     ctx.clearRect(0, 0, w, h);
-    if (!notes || !notes.length) return;
+    if (!points || !points.length) return;
 
-    const lo = Math.min(lowest != null ? lowest : 127, ...notes.map(n => n.n)) - 1;
-    const hi = Math.max(highest != null ? highest : 0, ...notes.map(n => n.n)) + 1;
+    const pitches = points.map(p => p[1]);
+    const lo = Math.min(lowest != null ? lowest : 127, ...pitches) - 1;
+    const hi = Math.max(highest != null ? highest : 0, ...pitches) + 1;
     const span = Math.max(4, hi - lo);
-    const end = Math.max(0.001, Math.max(...notes.map(n => n.s + n.d)));
 
-    for (const n of notes) {
-      const x = (n.s / end) * w;
-      const width = Math.max(1.2, (n.d / end) * w);
-      const y = h - ((n.n - lo) / span) * h;
-      ctx.fillStyle = 'rgba(232,145,63,' + (0.35 + (n.v / 127) * 0.6).toFixed(2) + ')';
+    for (const [start, note, length, velocity] of points) {
+      const x = (start / 255) * w;
+      const width = Math.max(1.2, (length / 255) * w);
+      const y = h - ((note - lo) / span) * h;
+      ctx.fillStyle = 'rgba(232,145,63,' + (0.35 + (velocity / 127) * 0.6).toFixed(2) + ')';
       ctx.fillRect(x, Math.max(0, y - 1.4), width, 2.8);
     }
   }
@@ -151,10 +154,7 @@
       location.href = '/sessions/' + s.id;
     });
 
-    // The fingerprint needs the note data, which is a second request per row.
-    api('/api/sessions/' + s.id + '/notes')
-      .then(data => drawStrip(row.querySelector('canvas'), data.notes, s.lowest_note, s.highest_note))
-      .catch(() => {});
+    drawStrip(row.querySelector('canvas'), s.fingerprint, s.lowest_note, s.highest_note);
     return row;
   }
 
@@ -168,9 +168,7 @@
         });
         s.favorite = updated.favorite;
         row.innerHTML = rowHtml(s);
-        api('/api/sessions/' + s.id + '/notes')
-          .then(d => drawStrip(row.querySelector('canvas'), d.notes, s.lowest_note, s.highest_note))
-          .catch(() => {});
+        drawStrip(row.querySelector('canvas'), s.fingerprint, s.lowest_note, s.highest_note);
       } catch (err) { toast(err.message, 'error'); }
       return;
     }

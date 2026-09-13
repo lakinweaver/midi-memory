@@ -20,6 +20,7 @@
       this.sampled = false;
       this.voices = new Set();
       this._loading = null;
+      this._useSamples = false;
     }
 
     /** True until the sample set has been fetched and decoded. */
@@ -27,8 +28,20 @@
       return this._loading === null || !this.sampled;
     }
 
-    /* The AudioContext can only start from a user gesture, so this is called
-       on the first click rather than at page load. */
+    /* Start audio from inside a user gesture.
+     *
+     * iOS is strict in three ways that desktop browsers are not, and all three
+     * have to be handled here or playback is simply silent on an iPhone:
+     *
+     *  1. The context only really starts if something is played synchronously
+     *     within the gesture, so a one-sample silent buffer is fired before any
+     *     `await` can yield control.
+     *  2. It suspends contexts that go quiet or get backgrounded, so state is
+     *     rechecked before every playback rather than only on the first.
+     *  3. It will re-suspend a context that produces nothing for seconds, which
+     *     is exactly what waiting on ~2 MB of samples used to do. Sample loading
+     *     is therefore kicked off here but deliberately NOT awaited.
+     */
     async unlock() {
       if (!this.ctx) {
         const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -38,9 +51,32 @@
         this.master.gain.value = 0.85;
         this.master.connect(this.ctx.destination);
       }
-      if (this.ctx.state === 'suspended') await this.ctx.resume();
+
+      this._nudge();                                   // must precede any await
+      const resuming = this.ctx.resume ? this.ctx.resume() : Promise.resolve();
       if (!this._loading) this._loading = this._loadSamples();
-      return this._loading;
+      try { await resuming; } catch (_) { /* already running */ }
+
+      if (this.ctx.state !== 'running') {
+        throw new Error('Audio is blocked. On iPhone, check the silent switch.');
+      }
+      return true;
+    }
+
+    /** A one-sample silent buffer: the canonical way to open iOS audio. */
+    _nudge() {
+      try {
+        const source = this.ctx.createBufferSource();
+        source.buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+        source.connect(this.ctx.destination);
+        source.start(0);
+      } catch (_) { /* not fatal; the resume below may still be enough */ }
+    }
+
+    /** Called as playback starts, so the timbre cannot change mid-phrase. */
+    beginPlayback() {
+      this._useSamples = this.sampled;
+      return this._useSamples;
     }
 
     async _loadSamples() {
@@ -59,13 +95,21 @@
         try {
           const res = await fetch('/static/audio/' + file);
           const bytes = await res.arrayBuffer();
-          const buffer = await this.ctx.decodeAudioData(bytes);
+          const buffer = await this._decode(bytes);
           this.buffers.set(Number(midi), buffer);
         } catch (_) { /* a missing sample just widens the pitch-shift gap */ }
       }));
 
       this.sampled = this.buffers.size > 0;
       return this.sampled;
+    }
+
+    /** Safari only gained promise-based decodeAudioData late; support both. */
+    _decode(bytes) {
+      return new Promise((resolve, reject) => {
+        const result = this.ctx.decodeAudioData(bytes, resolve, reject);
+        if (result && typeof result.then === 'function') result.then(resolve, reject);
+      });
     }
 
     _nearestSample(midi) {
@@ -83,7 +127,9 @@
       if (this.voices.size > MAX_VOICES) return;   // protect a small Pi-side CPU
 
       const level = Math.pow(Math.max(1, velocity) / 127, 1.6) * 0.9;
-      const node = this.sampled
+      // Fixed when playback began: if the samples arrive mid-phrase, finishing
+      // on the synth is less jarring than switching instruments halfway.
+      const node = this._useSamples
         ? this._playSampled(midi, level, when, duration)
         : this._playSynth(midi, level, when, duration);
 

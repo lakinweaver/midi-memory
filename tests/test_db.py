@@ -168,3 +168,26 @@ def test_date_filter_accepts_a_full_timestamp_too(db):
     db.insert_session(make_record(1, days_ago=0))
     future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     assert db.search(date_from=future)["total"] == 0
+
+
+def test_fingerprint_round_trips(db):
+    record = make_record(1)
+    record.fingerprint = [[0, 60, 12, 90], [40, 64, 10, 80]]
+    db.insert_session(record)
+
+    assert db.get_session("session001")["fingerprint"] == record.fingerprint
+    assert db.search()["items"][0]["fingerprint"] == record.fingerprint
+
+
+def test_sessions_without_a_fingerprint_can_be_found_and_filled(db):
+    """Recordings made before pitch strips existed get backfilled, not broken."""
+    db.insert_session(make_record(1))
+    with db.connect() as conn:
+        conn.execute("UPDATE sessions SET fingerprint = NULL")
+
+    assert db.ids_missing_fingerprint() == ["session001"]
+    assert db.get_session("session001")["fingerprint"] == [], "missing is empty, not an error"
+
+    db.set_fingerprint("session001", [[0, 60, 5, 100]])
+    assert db.ids_missing_fingerprint() == []
+    assert db.get_session("session001")["fingerprint"] == [[0, 60, 5, 100]]

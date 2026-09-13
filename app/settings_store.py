@@ -24,7 +24,6 @@ EDITABLE = (
     "idle_seconds",
     "min_notes",
     "min_seconds",
-    "capture_during_playback",
     "device_match",
 )
 
@@ -88,7 +87,6 @@ class SettingsStore:
             "port": s.port,
             "data_dir": str(s.data_dir),
             "midi_source": s.midi_source,
-            "midi_sink": s.midi_sink,
             "auth_enabled": s.auth_enabled,
             "overrides_active": self.path.exists(),
         }

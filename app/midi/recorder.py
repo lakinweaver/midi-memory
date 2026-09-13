@@ -16,7 +16,7 @@ from typing import Callable, Optional, TextIO
 
 from app.config import Settings
 from app.midi.events import MidiEvent
-from app.midi.smf import compute_stats, write_smf
+from app.midi.smf import compute_stats, extract_notes, fingerprint, write_smf
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class SessionRecord:
     avg_velocity: Optional[float]
     device_name: str
     directory: Path
+    fingerprint: list = field(default_factory=list)
 
     @property
     def midi_path(self) -> Path:
@@ -293,6 +294,7 @@ def finalize_directory(
         avg_velocity=stats["avg_velocity"],
         device_name=device_name,
         directory=directory,
+        fingerprint=fingerprint(extract_notes(events)),
     )
 
 

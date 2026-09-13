@@ -19,8 +19,8 @@ page on your home network. There is no record button — that is the whole point
   interrupted session is finalised on the next start.
 - **Browse and search** by name, tag, free text, date range, length and starred status.
 - **Play back in the browser** with a piano roll, a sampled piano, loop and speed control.
-- **Or play back on the piano itself**, with a toggle in the transport that sends the
-  recording out to the attached instrument.
+  Playback starts immediately and the samples stream in behind it, because waiting on them
+  made iOS suspend the audio context and playback never started at all.
 - **Download** any session as a standard `.mid` file.
 
 ## Quick start (development, on any machine)
@@ -104,8 +104,7 @@ sudo systemctl restart midi-memory    # after changing .env
 Everything is set through environment variables or `.env` — see `.env.example`.
 
 The settings most worth tuning are also editable from the web UI, behind the cogwheel in
-the header: idle timeout, the minimum-size thresholds, the device filter, and whether to
-keep recording while playing to the instrument. Those changes take effect immediately —
+the header: idle timeout, the minimum-size thresholds, and the device filter. Those changes take effect immediately —
 on the next recorded note, with no restart — and are saved to `settings.json` in the data
 directory, which is layered on top of `.env` at startup. Everything else (port, password,
 data directory, which MIDI backend) is shown read-only there, since changing it needs a
@@ -121,8 +120,6 @@ restart. "Reset to .env" discards the overrides.
 | `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
 | `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
 | `MIDI_MEMORY_MIDI_SOURCE` | `auto` | `auto`, `alsa`, `portable`, `mock` or `none`. |
-| `MIDI_MEMORY_MIDI_SINK` | `auto` | Output backend for playing on the instrument. |
-| `MIDI_MEMORY_CAPTURE_DURING_PLAYBACK` | `false` | Keep recording while playing to the instrument. |
 
 **Tuning the idle timeout.** 45 seconds suits most people: long enough to think between
 phrases, short enough that unrelated ideas do not end up in the same file. If your takes
@@ -160,30 +157,18 @@ All events are timestamped with `time.monotonic()` when received. On a Pi the
 USB-to-userspace jitter is well under a millisecond — far finer than matters here — and
 a single clock keeps recording, replay and crash recovery consistent.
 
-### Playing back on the piano
+### Why the library is one request
 
-The transport has a **Browser / Piano** toggle. Browser playback renders audio locally,
-so it works from any device on the network. Piano playback streams the recording out of
-the Pi to the instrument, so it plays on real hammers.
+Each row shows a pitch strip: a thumbnail of what was played. Building those from the
+full note lists meant one HTTP request per visible row — 41 requests and about 70 KB to
+draw a page of 40, which browsers serialise into several waves. On a Pi over wifi that is
+exactly as slow as it sounds.
 
-Because the Pi holds the USB connection, piano playback is server-side and therefore
-*shared*: there is one instrument, one transport, and every open tab sees and can stop
-the same playback. The header shows an indicator whenever the piano is playing.
-
-Two things this has to get right:
-
-- **Recording is suppressed while the piano is playing.** Many digital pianos echo MIDI
-  in straight back out of MIDI out. Without suppression, playing a session to the piano
-  would be recorded as a new session, which would then be played back and recorded
-  again. A short guard window after stopping catches echoes still in flight. If your
-  instrument does not echo and you want to play along with a recording, set
-  `MIDI_MEMORY_CAPTURE_DURING_PLAYBACK=true`.
-- **Stopping always silences the instrument.** Cutting the stream mid-phrase would
-  otherwise leave the piano sustaining until it is power-cycled, so stopping sends
-  note-offs for everything held, lifts the pedal, then sends All Notes Off.
-
-The toggle disables itself, with an explanation, when no instrument is connected, and
-falls back to browser playback if the instrument disappears mid-session.
+Instead a compact fingerprint is computed once when the session is saved — the loudest
+note from each of 64 time buckets, quantised to bytes — stored in the database, and sent
+inline with the listing. One request, about 18 KB. Recordings made before this existed
+are backfilled in the background at startup, newest first, since those are the ones on
+screen.
 
 ### Sustain pedal
 
@@ -219,10 +204,8 @@ app/
     events.py    normalised event model, realtime-message filtering
     recorder.py  session segmentation, durability, crash recovery
     smf.py       MIDI file rendering, note extraction, stats
-    source.py    input backend selection    alsa_source.py / portable_source.py / mock_source.py
-    sink.py      output backend selection   alsa_sink.py / portable_sink.py
-    device_player.py  transport for playing a session on the instrument
-  api/           sessions, tags, playback, status + SSE
+    source.py    backend selection   alsa_source.py / portable_source.py / mock_source.py
+  api/           sessions, tags, settings, status + SSE
   static/, templates/
 ```
 
