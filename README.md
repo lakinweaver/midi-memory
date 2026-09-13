@@ -1,0 +1,156 @@
+# MIDI Memory
+
+An always-on notepad for the ideas you play and forget.
+
+Leave a Raspberry Pi connected to your digital piano and it listens continuously.
+Anything you play is captured, and when you stop for a while the take is filed as its
+own **session**. Later you browse, search, tag, replay and download them from a web
+page on your home network. There is no record button — that is the whole point.
+
+<!-- screenshots live in docs/ -->
+
+## What it does
+
+- **Records continuously** from a USB MIDI keyboard, with no interaction.
+- **Splits takes automatically** after a configurable silence (default 45s).
+- **Never cuts a held chord** — a session stays open while keys or the sustain pedal are down.
+- **Ignores accidental key brushes** — takes under 4 notes or 2 seconds are discarded.
+- **Survives power cuts** — every note is flushed to disk as it is played, and an
+  interrupted session is finalised on the next start.
+- **Browse and search** by name, tag, free text, date range, length and starred status.
+- **Play back in the browser** with a piano roll, a sampled piano, loop and speed control.
+- **Download** any session as a standard `.mid` file.
+
+## Quick start (development, on any machine)
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/python scripts/fetch_samples.py     # optional: piano samples for playback
+cp .env.example .env
+.venv/bin/python -m app
+```
+
+Open <http://localhost:8080>. With no MIDI hardware present the app runs fine and simply
+records nothing. To see it working end to end, set `MIDI_MEMORY_MIDI_SOURCE=mock` in
+`.env` and it will play itself, or generate a library of demo takes:
+
+```bash
+.venv/bin/python -m app.tools.seed --count 14
+```
+
+## Install on a Raspberry Pi
+
+```bash
+git clone <your-repo-url> ~/midi-memory
+cd ~/midi-memory
+./scripts/install_pi.sh
+```
+
+The installer sets up the virtualenv, installs system packages, creates `/var/lib/midi-memory`,
+generates a random password into `.env`, and installs and starts a systemd service so
+recording resumes automatically on every boot. It is safe to re-run to upgrade.
+
+```bash
+journalctl -u midi-memory -f          # watch it work
+sudo systemctl restart midi-memory    # after changing .env
+.venv/bin/python -m app.tools.ports   # what MIDI ports can it see?
+```
+
+## Configuration
+
+Everything is set through environment variables or `.env` — see `.env.example`.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `MIDI_MEMORY_PASSWORD` | *(empty)* | Shared password for the web UI. Empty disables login. |
+| `MIDI_MEMORY_IDLE_SECONDS` | `45` | Silence that ends a session. |
+| `MIDI_MEMORY_MIN_NOTES` | `4` | Fewer notes than this is treated as an accident. |
+| `MIDI_MEMORY_MIN_SECONDS` | `2` | Shorter than this is treated as an accident. |
+| `MIDI_MEMORY_DEVICE_MATCH` | *(empty)* | Record only from ports whose name contains this. |
+| `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
+| `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
+| `MIDI_MEMORY_MIDI_SOURCE` | `auto` | `auto`, `alsa`, `portable`, `mock` or `none`. |
+
+**Tuning the idle timeout.** 45 seconds suits most people: long enough to think between
+phrases, short enough that unrelated ideas do not end up in the same file. If your takes
+keep getting merged, lower it; if one idea keeps getting split in half, raise it.
+
+## How it works
+
+```
+USB keyboard → MidiSource → asyncio queue → Recorder → events.jsonl (flushed per note)
+                                               ↓ idle timeout
+                                         session.mid + SQLite row → web UI (SSE)
+```
+
+Each session is a directory under `$DATA_DIR/sessions/<id>/`:
+
+- `events.jsonl` — the source of truth, appended and flushed as you play.
+- `session.mid` — a standard type-0 MIDI file, rendered when the session closes.
+- `meta.json` — start time and device, so crash recovery can rebuild the rest.
+
+Metadata (names, tags, notes, stars) lives in SQLite; the recordings themselves are
+plain files you can copy out at any time.
+
+### MIDI backends
+
+| Platform | Package | Notes |
+| --- | --- | --- |
+| Linux / Raspberry Pi | [`python-alsa-midi`](https://github.com/Jajcus/python-alsa-midi) | Default. Pure Python, supports CPython 3.9–3.14, uses the native ALSA sequencer and its port-announce events for hotplug. |
+| macOS / Windows | [`rtmidi2`](https://github.com/gesellkammer/rtmidi2) | Optional (`pip install -e '.[portable]'`), for live capture while developing. Needs CPython ≤ 3.13. |
+
+`python-rtmidi` is deliberately **not** used: its last release was November 2023 and ships
+no wheels past CPython 3.12, which would have pinned the whole project to an ageing
+interpreter.
+
+All events are timestamped with `time.monotonic()` when received. On a Pi the
+USB-to-userspace jitter is well under a millisecond — far finer than matters here — and
+a single clock keeps recording, replay and crash recovery consistent.
+
+### Sustain pedal
+
+Each note carries two lifetimes: how long the **key was held**, and how long it
+**actually rang** once the pedal is accounted for. The piano roll draws the first, so a
+heavily pedalled passage stays readable; playback uses the second, so it sounds like what
+you played.
+
+## Security
+
+This is built for a device on your own network: one shared password, a signed cookie,
+and plain HTTP. That is proportionate to a Pi behind a home router — but it is **not**
+enough to expose to the internet. If you need that, put it behind a reverse proxy with
+TLS and real authentication.
+
+## Development
+
+```bash
+.venv/bin/python -m pytest        # 54 tests
+.venv/bin/python -m pytest -q tests/test_recorder.py
+```
+
+The test suite drives the recorder with a fake clock, so session splitting, held-note
+suppression and crash recovery are verified without waiting in real time or needing a
+keyboard.
+
+```
+app/
+  config.py      settings          db.py      SQLite + search
+  service.py     wiring            auth.py    password + cookie
+  events.py      SSE pub/sub       main.py    FastAPI app and pages
+  midi/
+    events.py    normalised event model, realtime-message filtering
+    recorder.py  session segmentation, durability, crash recovery
+    smf.py       MIDI file rendering, note extraction, stats
+    source.py    backend selection   alsa_source.py / portable_source.py / mock_source.py
+  api/           sessions, tags, status + SSE
+  static/, templates/
+```
+
+## Credits
+
+Piano samples are the [Salamander Grand Piano](https://archive.org/details/SalamanderGrandPianoV3)
+by Alexander Holm, licensed **CC BY 3.0**, as redistributed by the Tone.js project.
+Typefaces are [Fraunces](https://fonts.google.com/specimen/Fraunces) and
+[DM Mono](https://fonts.google.com/specimen/DM+Mono), both SIL Open Font License,
+served locally so the app works with no internet connection.

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Library · MIDI Memory{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Library</h1>
+  <div class="page-sub" id="library-stats">
+    {{ stats.sessions }} session{{ '' if stats.sessions == 1 else 's' }}
+    · {{ (stats.total_notes or 0) }} notes captured
+  </div>
+</div>
+
+<section class="filters">
+  <div class="filter-row">
+    <label class="field search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+      </svg>
+      <input type="search" id="f-q" placeholder="Search names, notes and tags…" autocomplete="off">
+    </label>
+
+    <label class="field date">
+      <span class="sr">From</span>
+      <input type="date" id="f-from" title="Recorded on or after">
+    </label>
+    <label class="field date">
+      <span class="sr">To</span>
+      <input type="date" id="f-to" title="Recorded on or before">
+    </label>
+
+    <label class="field">
+      <select id="f-duration" title="Length">
+        <option value="">Any length</option>
+        <option value="0:10000">Under 10s</option>
+        <option value="10000:60000">10s – 1 min</option>
+        <option value="60000:300000">1 – 5 min</option>
+        <option value="300000:">Over 5 min</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <select id="f-sort" title="Sort">
+        <option value="date:desc">Newest first</option>
+        <option value="date:asc">Oldest first</option>
+        <option value="duration:desc">Longest first</option>
+        <option value="duration:asc">Shortest first</option>
+        <option value="notes:desc">Most notes</option>
+        <option value="name:asc">Name A–Z</option>
+      </select>
+    </label>
+
+    <button class="btn" id="f-fav" title="Show only starred">★ Starred</button>
+    <button class="btn ghost" id="f-clear" hidden>Clear</button>
+  </div>
+
+  <div class="tagbar" id="tagbar" {% if not tags %}hidden{% endif %}>
+    <span class="tagbar-label">Tags</span>
+    {% for tag in tags %}
+      <button class="pip" data-tag="{{ tag.name }}">{{ tag.name }} <span class="n">{{ tag.count }}</span></button>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="count-line">
+  <span id="result-count">Loading…</span>
+</div>
+
+<div class="list" id="list"></div>
+
+<div style="text-align:center; padding: 26px 0;">
+  <button class="btn" id="load-more" hidden>Load more</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static('js/library.js') }}"></script>
+{% endblock %}

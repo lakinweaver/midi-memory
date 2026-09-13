@@ -1,0 +1,39 @@
+# Installed to /etc/systemd/system/midi-memory.service by scripts/install_pi.sh,
+# which substitutes the @PLACEHOLDER@ values.
+[Unit]
+Description=MIDI Memory - always-on MIDI notepad
+Documentation=https://github.com/
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+SupplementaryGroups=audio
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@APP_DIR@/.env
+ExecStart=@APP_DIR@/.venv/bin/python -m app
+
+Restart=always
+RestartSec=3
+# Keep restarting after a bad USB cable or a wedged keyboard, indefinitely.
+StartLimitIntervalSec=0
+
+# The recorder must survive a reboot without losing the take in progress; give
+# it time to finalise the open session.
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=@DATA_DIR@ @APP_DIR@
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=midi-memory
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100E0C">
+  <title>Sign in · MIDI Memory</title>
+  <link rel="stylesheet" href="{{ static('css/app.css') }}">
+</head>
+<body>
+<div class="shell login-wrap">
+  <form class="login-card" method="post" action="/login">
+    <div class="wordmark">MIDI&nbsp;<b>Memory</b></div>
+    <p>always listening</p>
+    {% if error %}<div class="login-err">{{ error }}</div>{% endif %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="field">
+      <input type="password" name="password" placeholder="Password"
+             autocomplete="current-password" autofocus required>
+    </div>
+    <button class="btn primary" type="submit">Enter</button>
+  </form>
+</div>
+</body>
+</html>
