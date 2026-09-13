@@ -53,6 +53,30 @@ The installer sets up the virtualenv, installs system packages, creates `/var/li
 generates a random password into `.env`, and installs and starts a systemd service so
 recording resumes automatically on every boot. It is safe to re-run to upgrade.
 
+If the install fails partway — a flaky Pi wifi connection timing out against apt or
+PyPI is the usual cause — just re-run it. The script is idempotent and resumes: packages
+already installed are skipped, and samples already downloaded are not fetched again. To
+skip the sample download entirely, `SKIP_SAMPLES=1 ./scripts/install_pi.sh`.
+
+**Why a virtualenv on a single-purpose Pi?** Not to isolate from other apps — to isolate
+from Debian's. Raspberry Pi OS marks the system Python as externally managed (PEP 668),
+so `pip install` into it is refused without `--break-system-packages`, and overriding
+that can break `apt`'s own Python tooling. The venv costs about 15 MB.
+
+### If the web interface will not load
+
+```bash
+systemctl status midi-memory --no-pager     # is it running at all?
+journalctl -u midi-memory -n 40 --no-pager  # why did it stop?
+curl -sS localhost:8080/healthz             # does it answer locally?
+ss -lntp | grep 8080                        # is it listening on all interfaces?
+~/midi-memory/.venv/bin/python -c "import fastapi, uvicorn, mido, alsa_midi"
+```
+
+If `curl localhost` works but another machine cannot reach it, the app is fine and the
+problem is the network path — check you are using the Pi's LAN address (`hostname -I`)
+rather than `raspberrypi.local`, which needs mDNS working on the client.
+
 ```bash
 journalctl -u midi-memory -f          # watch it work
 sudo systemctl restart midi-memory    # after changing .env

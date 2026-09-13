@@ -11,10 +11,15 @@ by the Tone.js project. Attribution is reproduced in README.md.
 from __future__ import annotations
 
 import json
+import socket
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+TIMEOUT_SECONDS = 30
+ATTEMPTS = 3
 
 BASE_URL = "https://tonejs.github.io/audio/salamander/"
 OUT_DIR = Path(__file__).resolve().parent.parent / "app" / "static" / "audio"
@@ -33,6 +38,26 @@ SAMPLES = [
 ]
 
 
+def _download(url: str, target: Path) -> bool:
+    """Fetch one sample, retrying briefly.
+
+    A Pi on wifi drops connections far more readily than a laptop, and losing the
+    whole sample set to one flaky socket is not worth it.
+    """
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as response:
+                data = response.read()
+            target.write_bytes(data)
+            return True
+        except (urllib.error.URLError, socket.timeout, OSError) as exc:
+            if attempt == ATTEMPTS:
+                print(f"  FAILED {target.name} after {ATTEMPTS} attempts: {exc}")
+                return False
+            time.sleep(attempt)  # brief backoff before trying again
+    return False
+
+
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, str] = {}
@@ -47,10 +72,7 @@ def main() -> int:
             total += target.stat().st_size
             print(f"  have {filename}")
             continue
-        try:
-            urllib.request.urlretrieve(BASE_URL + filename, target)
-        except (urllib.error.URLError, OSError) as exc:
-            print(f"  FAILED {filename}: {exc}")
+        if not _download(BASE_URL + filename, target):
             failed.append(filename)
             continue
         size = target.stat().st_size
@@ -67,7 +89,9 @@ def main() -> int:
     )
     print(f"\n{len(manifest)} samples, {total / 1_048_576:.1f} MB -> {OUT_DIR}")
     if failed:
-        print(f"{len(failed)} failed; the player will pitch-shift further to cover the gaps.")
+        print(f"{len(failed)} failed; the player will pitch-shift further to cover "
+              "the gaps. Re-run this script to pick them up -- files already "
+              "downloaded are skipped.")
     return 0
 
 
