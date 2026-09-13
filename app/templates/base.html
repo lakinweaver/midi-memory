@@ -93,6 +93,20 @@
 
 
       <section class="fieldset">
+        <h3>Playback</h3>
+        <div class="row-field">
+          <span class="label">Piano samples</span>
+          <div class="sample-state">
+            <span id="sample-status">checking…</span>
+            <button class="btn" type="button" id="sample-download" hidden>Download</button>
+          </div>
+          <span class="hint">Recorded piano, used for playback in the browser. Without
+            them the player falls back to a synthesised tone, which is fine for checking
+            notes but not for judging an idea. About 2 MB, fetched once.</span>
+        </div>
+      </section>
+
+      <section class="fieldset">
         <h3>Set in .env <span class="muted-tag">restart required</span></h3>
         <div class="readonly-grid" id="set-readonly"></div>
       </section>

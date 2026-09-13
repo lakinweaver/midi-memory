@@ -8,6 +8,7 @@
 (function () {
   'use strict';
 
+  const SAMPLE_WAIT_MS = 12000;  // give up waiting and use the synth rather than hang
   const DAMPER_RELEASE = 0.28;   // seconds for the damper to stop a string
   const SYNTH_RELEASE = 0.22;
   const MAX_VOICES = 64;
@@ -20,7 +21,48 @@
       this.sampled = false;
       this.voices = new Set();
       this._loading = null;
+      this._prefetching = null;
       this._useSamples = false;
+      this.samplesUnavailable = false;
+    }
+
+    /** True once the sampled piano is decoded and ready to play. */
+    get samplesReady() {
+      return this.sampled;
+    }
+
+    /* Download the sample bytes.
+     *
+     * Deliberately separate from decoding: fetching needs no AudioContext, so it
+     * can start at page load, while decoding must wait for the user gesture that
+     * opens audio. By the time play is pressed the bytes are usually already
+     * here, so waiting for the real piano costs a decode rather than a download.
+     */
+    prefetch() {
+      if (this._prefetching) return this._prefetching;
+      this._prefetching = (async () => {
+        let manifest;
+        try {
+          const res = await fetch('/static/audio/manifest.json');
+          if (!res.ok) throw new Error('no manifest');
+          manifest = await res.json();
+        } catch (_) {
+          this.samplesUnavailable = true;
+          return null;                       // samples were never installed
+        }
+        const raw = new Map();
+        await Promise.all(Object.entries(manifest.samples || {}).map(
+          async ([midi, file]) => {
+            try {
+              const res = await fetch('/static/audio/' + file);
+              if (!res.ok) return;
+              raw.set(Number(midi), await res.arrayBuffer());
+            } catch (_) { /* one missing sample just widens the pitch-shift gap */ }
+          }));
+        if (!raw.size) this.samplesUnavailable = true;
+        return raw;
+      })();
+      return this._prefetching;
     }
 
     /** True until the sample set has been fetched and decoded. */
@@ -54,12 +96,21 @@
 
       this._nudge();                                   // must precede any await
       const resuming = this.ctx.resume ? this.ctx.resume() : Promise.resolve();
-      if (!this._loading) this._loading = this._loadSamples();
+      this.prefetch();                                 // no-op if already running
       try { await resuming; } catch (_) { /* already running */ }
 
       if (this.ctx.state !== 'running') {
         throw new Error('Audio is blocked. On iPhone, check the silent switch.');
       }
+
+      // Wait for the real piano. The synth is a fallback for when the samples
+      // are genuinely absent, not something to settle for because decoding had
+      // not finished yet. The cap only stops a stalled network wedging playback.
+      if (!this._loading) this._loading = this._loadSamples();
+      await Promise.race([
+        this._loading,
+        new Promise((resolve) => setTimeout(resolve, SAMPLE_WAIT_MS)),
+      ]);
       return true;
     }
 
@@ -80,26 +131,18 @@
     }
 
     async _loadSamples() {
-      let manifest;
-      try {
-        const res = await fetch('/static/audio/manifest.json');
-        if (!res.ok) throw new Error('no manifest');
-        manifest = await res.json();
-      } catch (_) {
+      const raw = await this.prefetch();
+      if (!raw || !raw.size) {
         this.sampled = false;
-        return false;   // synth fallback
+        return false;                        // genuine synth fallback
       }
-
-      const entries = Object.entries(manifest.samples || {});
-      await Promise.all(entries.map(async ([midi, file]) => {
+      await Promise.all([...raw.entries()].map(async ([midi, bytes]) => {
         try {
-          const res = await fetch('/static/audio/' + file);
-          const bytes = await res.arrayBuffer();
-          const buffer = await this._decode(bytes);
-          this.buffers.set(Number(midi), buffer);
-        } catch (_) { /* a missing sample just widens the pitch-shift gap */ }
+          // decodeAudioData detaches the buffer, so hand it a copy and keep the
+          // original in case a decode has to be retried.
+          this.buffers.set(midi, await this._decode(bytes.slice(0)));
+        } catch (_) { /* skip this pitch; neighbours cover it */ }
       }));
-
       this.sampled = this.buffers.size > 0;
       return this.sampled;
     }

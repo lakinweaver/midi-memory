@@ -5,6 +5,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
+
+from app import samples
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -31,6 +34,7 @@ def _payload(request: Request) -> dict:
         "input": {"connected": service.source.connected,
                   "port_name": service.source.port_name,
                   "kind": service.source.kind},
+        "samples": samples.status(),
     }
 
 
@@ -45,6 +49,19 @@ async def update_settings(request: Request, payload: SettingsUpdate) -> dict:
     if "device_match" in changes:
         changes["device_match"] = changes["device_match"].strip()
     request.app.state.settings_store.save(changes)
+    return _payload(request)
+
+
+@router.post("/samples")
+async def download_samples(request: Request) -> dict:
+    """Fetch the piano samples the browser player uses.
+
+    They are not in the repository (a couple of megabytes of audio), so a fresh
+    clone has none and playback falls back to a synthesised tone. Rather than
+    making that a setup step people have to know about, the app can fetch them
+    itself. Blocking network work, so it runs off the event loop.
+    """
+    await run_in_threadpool(samples.download)
     return _payload(request)
 
 

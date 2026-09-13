@@ -167,6 +167,8 @@
       minSeconds: document.getElementById('set-min-seconds'),
       device: document.getElementById('set-device'),
       readonly: document.getElementById('set-readonly'),
+      sampleStatus: document.getElementById('sample-status'),
+      sampleDownload: document.getElementById('sample-download'),
       save: document.getElementById('settings-save'),
       reset: document.getElementById('settings-reset'),
     };
@@ -192,6 +194,36 @@
       const input = payload.input.connected ? payload.input.port_name : 'not connected';
       rows.push('<dt>Keyboard</dt><dd>' + escapeHtml(input) + '</dd>');
       f.readonly.innerHTML = rows.join('');
+      fillSamples(payload.samples);
+    }
+
+    function fillSamples(state) {
+      if (!state) return;
+      const complete = state.ready && state.installed >= state.expected;
+      f.sampleStatus.className = complete ? 'ok' : 'missing';
+      f.sampleStatus.textContent = complete
+        ? state.installed + ' of ' + state.expected + ' installed'
+        : (state.installed
+            ? state.installed + ' of ' + state.expected + ' installed — incomplete'
+            : 'not installed — using the built-in tone');
+      f.sampleDownload.hidden = complete;
+      f.sampleDownload.textContent = state.installed ? 'Finish downloading' : 'Download';
+    }
+
+    async function downloadSamples() {
+      const button = f.sampleDownload;
+      button.disabled = true;
+      const previous = button.textContent;
+      button.textContent = 'Downloading…';
+      try {
+        fill(await api('/api/settings/samples', { method: 'POST' }));
+        toast('Piano samples ready — reload a session to hear them');
+      } catch (err) {
+        toast('Could not download samples: ' + err.message, 'error');
+        button.textContent = previous;
+      } finally {
+        button.disabled = false;
+      }
     }
 
     async function open() {
@@ -233,6 +265,7 @@
     openBtn.addEventListener('click', open);
     f.save.addEventListener('click', save);
     f.reset.addEventListener('click', reset);
+    f.sampleDownload.addEventListener('click', downloadSamples);
     // Enter anywhere in the form should save, not silently dismiss the dialog.
     dialog.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); save(); }

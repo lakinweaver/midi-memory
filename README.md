@@ -19,8 +19,6 @@ page on your home network. There is no record button — that is the whole point
   interrupted session is finalised on the next start.
 - **Browse and search** by name, tag, free text, date range, length and starred status.
 - **Play back in the browser** with a piano roll, a sampled piano, loop and speed control.
-  Playback starts immediately and the samples stream in behind it, because waiting on them
-  made iOS suspend the audio context and playback never started at all.
 - **Download** any session as a standard `.mid` file.
 
 ## Quick start (development, on any machine)
@@ -28,7 +26,7 @@ page on your home network. There is no record button — that is the whole point
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-.venv/bin/python scripts/fetch_samples.py     # optional: piano samples for playback
+.venv/bin/python scripts/fetch_samples.py     # optional: piano samples (or use the UI)
 cp .env.example .env
 .venv/bin/python -m app
 ```
@@ -156,6 +154,23 @@ interpreter.
 All events are timestamped with `time.monotonic()` when received. On a Pi the
 USB-to-userspace jitter is well under a millisecond — far finer than matters here — and
 a single clock keeps recording, replay and crash recovery consistent.
+
+### Piano samples
+
+Playback uses a recorded piano rather than a synthesised tone. The samples are about
+2 MB and are deliberately not in the repository, so a fresh clone has none and playback
+falls back to a built-in tone that is fine for checking notes but poor for judging an
+idea.
+
+Rather than leaving that as a setup step to remember, the app reports it and fixes it
+itself: the settings dialog shows how many samples are installed, with a Download button
+when any are missing. `scripts/fetch_samples.py` does the same thing from the command
+line, and both share one implementation in `app/samples.py`. Either is safe to re-run —
+files already present are skipped, so an interrupted download resumes.
+
+The sample bytes are fetched as soon as a session page opens, while decoding waits for
+the user gesture that opens audio, so pressing play costs a decode rather than a
+download — about 140 ms in practice.
 
 ### Why the library is one request
 

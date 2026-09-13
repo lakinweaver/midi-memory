@@ -174,18 +174,21 @@
 
   async function play() {
     try {
-      // Returns as soon as audio is open. Samples keep loading in the
-      // background: waiting for them here made iOS suspend the context and
-      // playback silently never started.
+      // Wait for the sampled piano. The bytes are prefetched at page load, so
+      // this is normally just a decode; the button shows it is working in case
+      // a cold cache makes it take a moment.
+      if (!engine.samplesReady) el.play.classList.add('loading');
       await engine.unlock();
-      if (!engine.beginPlayback()) {
-        // Still on the synth; say so once rather than leaving it a mystery.
-        if (!state.warnedSynth) {
-          state.warnedSynth = true;
-          toast('Using the built-in tone while the piano samples load');
-        }
+      el.play.classList.remove('loading');
+
+      if (!engine.beginPlayback() && !state.warnedSynth) {
+        state.warnedSynth = true;
+        toast(engine.samplesUnavailable
+          ? 'Piano samples are missing — run scripts/fetch_samples.py on the server'
+          : 'Piano samples are still loading; using the built-in tone', 'error');
       }
     } catch (err) {
+      el.play.classList.remove('loading');
       toast(err.message, 'error');
       return;
     }
@@ -426,6 +429,10 @@
     } catch (err) {
       toast('Could not load the recording: ' + err.message, 'error');
     }
+
+    // Start pulling the sample bytes now, so pressing play only has to decode.
+    // Needs no AudioContext, so it is safe before any user gesture.
+    engine.prefetch();
 
     resize();
     paintScrub();
