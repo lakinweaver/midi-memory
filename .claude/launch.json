@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "midi-memory",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "app"],
+      "port": 8477
+    }
+  ]
+}

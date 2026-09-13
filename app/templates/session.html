@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ session.name }} · MIDI Memory{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:18px">
+  <a href="/" class="nav-link">&larr; Library</a>
+</div>
+
+<div class="page-head" style="margin-bottom:20px">
+  <input class="title-input" id="title" value="{{ session.name }}"
+         aria-label="Session name" maxlength="200">
+</div>
+
+<div class="detail-grid">
+  <div>
+    <div class="panel">
+      <div class="roll-wrap">
+        <canvas id="roll"></canvas>
+      </div>
+      <div class="transport">
+        <button class="play-btn" id="play" aria-label="Play">
+          <svg id="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg id="icon-pause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" hidden>
+            <path d="M6 5h4v14H6zM14 5h4v14h-4z"/>
+          </svg>
+        </button>
+        <div class="scrub" id="scrub" role="slider" aria-label="Playback position"
+             tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="scrub-track"></div>
+          <div class="scrub-fill" id="scrub-fill"></div>
+          <div class="scrub-knob" id="scrub-knob"></div>
+        </div>
+        <span class="time" id="time">0:00 / 0:00</span>
+        <button class="btn ghost" id="loop" title="Loop playback">Loop</button>
+        <select id="speed" class="btn ghost" title="Playback speed"
+                style="height:32px;padding:0 6px">
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <div class="panel-head">Notes to self</div>
+      <div class="panel-body">
+        <textarea class="note-area" id="notes"
+                  placeholder="What was this? Where could it go?">{{ session.notes }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="panel">
+      <div class="panel-head">Recording</div>
+      <div class="panel-body">
+        <div class="meta-list">
+          <div class="meta-item"><span class="k">Recorded</span>
+            <span class="v" id="m-date" data-iso="{{ session.started_at }}">—</span></div>
+          <div class="meta-item"><span class="k">Length</span>
+            <span class="v" id="m-duration">—</span></div>
+          <div class="meta-item"><span class="k">Notes</span>
+            <span class="v">{{ session.note_count }}</span></div>
+          <div class="meta-item"><span class="k">Range</span>
+            <span class="v" id="m-range">—</span></div>
+          <div class="meta-item"><span class="k">Avg velocity</span>
+            <span class="v">{{ session.avg_velocity | round(0) | int if session.avg_velocity else '—' }}</span></div>
+          {% if session.device_name %}
+          <div class="meta-item"><span class="k">Device</span>
+            <span class="v" style="font-size:11px">{{ session.device_name }}</span></div>
+          {% endif %}
+        </div>
+        <div style="display:flex; gap:8px; margin-top:16px">
+          <button class="btn {% if session.favorite %}on{% endif %}" id="fav" style="flex:1">
+            ★ {{ 'Starred' if session.favorite else 'Star' }}
+          </button>
+          <a class="btn" href="/api/sessions/{{ session.id }}/download" style="flex:1">Download</a>
+        </div>
+        <button class="btn danger ghost" id="delete" style="width:100%; margin-top:8px">
+          Delete recording
+        </button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <div class="panel-head">Tags</div>
+      <div class="panel-body">
+        <div class="tagbar" id="session-tags" style="margin-top:0"></div>
+        <input class="tag-input" id="tag-input" placeholder="Add a tag, press Enter"
+               list="all-tags" maxlength="40" autocomplete="off">
+        <datalist id="all-tags">
+          {% for tag in all_tags %}<option value="{{ tag.name }}">{% endfor %}
+        </datalist>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script id="session-data" type="application/json">
+  {{ {"id": session.id, "duration_ms": session.duration_ms,
+      "lowest": session.lowest_note, "highest": session.highest_note,
+      "tags": session.tags, "favorite": session.favorite} | tojson }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static('js/piano.js') }}"></script>
+<script src="{{ static('js/player.js') }}"></script>
+{% endblock %}
