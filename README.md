@@ -19,6 +19,8 @@ page on your home network. There is no record button — that is the whole point
   interrupted session is finalised on the next start.
 - **Browse and search** by name, tag, free text, date range, length and starred status.
 - **Play back in the browser** with a piano roll, a sampled piano, loop and speed control.
+- **Or play back on the piano itself**, with a toggle in the transport that sends the
+  recording out to the attached instrument.
 - **Download** any session as a standard `.mid` file.
 
 ## Quick start (development, on any machine)
@@ -71,6 +73,8 @@ Everything is set through environment variables or `.env` — see `.env.example`
 | `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
 | `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
 | `MIDI_MEMORY_MIDI_SOURCE` | `auto` | `auto`, `alsa`, `portable`, `mock` or `none`. |
+| `MIDI_MEMORY_MIDI_SINK` | `auto` | Output backend for playing on the instrument. |
+| `MIDI_MEMORY_CAPTURE_DURING_PLAYBACK` | `false` | Keep recording while playing to the instrument. |
 
 **Tuning the idle timeout.** 45 seconds suits most people: long enough to think between
 phrases, short enough that unrelated ideas do not end up in the same file. If your takes
@@ -108,6 +112,31 @@ All events are timestamped with `time.monotonic()` when received. On a Pi the
 USB-to-userspace jitter is well under a millisecond — far finer than matters here — and
 a single clock keeps recording, replay and crash recovery consistent.
 
+### Playing back on the piano
+
+The transport has a **Browser / Piano** toggle. Browser playback renders audio locally,
+so it works from any device on the network. Piano playback streams the recording out of
+the Pi to the instrument, so it plays on real hammers.
+
+Because the Pi holds the USB connection, piano playback is server-side and therefore
+*shared*: there is one instrument, one transport, and every open tab sees and can stop
+the same playback. The header shows an indicator whenever the piano is playing.
+
+Two things this has to get right:
+
+- **Recording is suppressed while the piano is playing.** Many digital pianos echo MIDI
+  in straight back out of MIDI out. Without suppression, playing a session to the piano
+  would be recorded as a new session, which would then be played back and recorded
+  again. A short guard window after stopping catches echoes still in flight. If your
+  instrument does not echo and you want to play along with a recording, set
+  `MIDI_MEMORY_CAPTURE_DURING_PLAYBACK=true`.
+- **Stopping always silences the instrument.** Cutting the stream mid-phrase would
+  otherwise leave the piano sustaining until it is power-cycled, so stopping sends
+  note-offs for everything held, lifts the pedal, then sends All Notes Off.
+
+The toggle disables itself, with an explanation, when no instrument is connected, and
+falls back to browser playback if the instrument disappears mid-session.
+
 ### Sustain pedal
 
 Each note carries two lifetimes: how long the **key was held**, and how long it
@@ -125,7 +154,7 @@ TLS and real authentication.
 ## Development
 
 ```bash
-.venv/bin/python -m pytest        # 54 tests
+.venv/bin/python -m pytest        # 78 tests
 .venv/bin/python -m pytest -q tests/test_recorder.py
 ```
 
@@ -142,8 +171,10 @@ app/
     events.py    normalised event model, realtime-message filtering
     recorder.py  session segmentation, durability, crash recovery
     smf.py       MIDI file rendering, note extraction, stats
-    source.py    backend selection   alsa_source.py / portable_source.py / mock_source.py
-  api/           sessions, tags, status + SSE
+    source.py    input backend selection    alsa_source.py / portable_source.py / mock_source.py
+    sink.py      output backend selection   alsa_sink.py / portable_sink.py
+    device_player.py  transport for playing a session on the instrument
+  api/           sessions, tags, playback, status + SSE
   static/, templates/
 ```
 

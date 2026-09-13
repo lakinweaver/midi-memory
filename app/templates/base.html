@@ -21,6 +21,11 @@
         <span class="lamp" id="lamp-rec"></span>
         <span class="val" id="rec-state">idle</span>
       </div>
+      <a class="readout piano-readout" id="piano-readout" href="#" hidden
+         title="Playing on the instrument - click to stop">
+        <span class="lamp play"></span>
+        <span class="val" id="piano-state">on piano</span>
+      </a>
       {% if request.app.state.auth.enabled %}
       <a href="/logout" class="nav-link">Sign out</a>
       {% endif %}

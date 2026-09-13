@@ -79,7 +79,24 @@
     const lampRec = document.getElementById('lamp-rec');
     const deviceName = document.getElementById('device-name');
     const recState = document.getElementById('rec-state');
+    const pianoReadout = document.getElementById('piano-readout');
     if (!lampDevice) return;
+
+    // The instrument is shared, so playback is visible (and stoppable) from any
+    // page, not just the session that started it.
+    function paintPlayback(playback) {
+      if (!pianoReadout) return;
+      pianoReadout.hidden = !(playback && playback.playing);
+    }
+
+    if (pianoReadout) {
+      pianoReadout.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          paintPlayback(await api('/api/playback/stop', { method: 'POST' }));
+        } catch (err) { toast(err.message, 'error'); }
+      });
+    }
 
     let source = null;
     let retry = 1000;
@@ -110,6 +127,10 @@
           case 'status':
             paintDevice(msg.connected, msg.port_name);
             paintRecording(msg.recording, msg.current_note_count);
+            paintPlayback(msg.playback);
+            break;
+          case 'playback':
+            paintPlayback(msg.playback);
             break;
           case 'device_status':
             paintDevice(msg.connected, msg.port_name);
@@ -131,6 +152,7 @@
         source.close();
         lampDevice.classList.remove('on');
         lampRec.classList.remove('rec');
+        paintPlayback(null);
         deviceName.textContent = 'reconnecting…';
         // Back off so a Pi that is rebooting isn't hammered.
         retry = Math.min(retry * 2, 15000);

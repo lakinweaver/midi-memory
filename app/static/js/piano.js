@@ -22,6 +22,11 @@
       this._loading = null;
     }
 
+    /** True until the sample set has been fetched and decoded. */
+    get loadPending() {
+      return this._loading === null || !this.sampled;
+    }
+
     /* The AudioContext can only start from a user gesture, so this is called
        on the first click rather than at page load. */
     async unlock() {

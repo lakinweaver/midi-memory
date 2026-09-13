@@ -221,3 +221,76 @@ def test_login_will_not_redirect_off_site(auth_client):
 
 def test_health_stays_public(auth_client):
     assert auth_client.get("/healthz").status_code == 200
+
+
+# -- device playback ---------------------------------------------------------
+@pytest.fixture
+def piano_client(settings):
+    """A client whose server has an instrument attached to play back to."""
+    settings.midi_source = "none"
+    settings.midi_sink = "mock"
+    with TestClient(create_app(settings)) as c:
+        yield c
+
+
+def test_playback_status_reports_no_output_without_an_instrument(client):
+    status = client.get("/api/playback").json()
+    assert status["playing"] is False
+    assert status["output"]["available"] is False, \
+        "the UI uses this to disable the Piano option"
+
+
+def test_playback_status_reports_an_attached_instrument(piano_client):
+    output = piano_client.get("/api/playback").json()["output"]
+    assert output["available"] is True and output["connected"] is True
+    assert output["port_name"]
+
+
+def test_play_then_stop_on_the_instrument(piano_client):
+    seed(piano_client, "aaa", "Waltz", notes=8)
+
+    started = piano_client.post("/api/playback/play", json={"session_id": "aaa"}).json()
+    assert started["playing"] is True
+    assert started["session_id"] == "aaa"
+    assert started["duration"] > 0
+
+    stopped = piano_client.post("/api/playback/stop").json()
+    assert stopped["playing"] is False
+
+
+def test_play_refuses_with_no_instrument_connected(client):
+    seed(client, "aaa", "Waltz")
+    response = client.post("/api/playback/play", json={"session_id": "aaa"})
+    assert response.status_code == 409
+    assert "instrument" in response.json()["detail"].lower()
+
+
+def test_play_unknown_session_is_a_404(piano_client):
+    assert piano_client.post(
+        "/api/playback/play", json={"session_id": "nope"}).status_code == 404
+
+
+def test_seek_and_configure(piano_client):
+    seed(piano_client, "aaa", "Waltz", notes=10)
+    piano_client.post("/api/playback/play", json={"session_id": "aaa"})
+
+    sought = piano_client.post("/api/playback/seek", json={"position": 1.0}).json()
+    assert sought["position"] == pytest.approx(1.0, abs=0.05)
+
+    configured = piano_client.post(
+        "/api/playback/config", json={"speed": 1.5, "loop": True}).json()
+    assert configured["speed"] == 1.5 and configured["loop"] is True
+    piano_client.post("/api/playback/stop")
+
+
+def test_playback_rejects_a_nonsense_speed(piano_client):
+    seed(piano_client, "aaa", "Waltz")
+    assert piano_client.post(
+        "/api/playback/play",
+        json={"session_id": "aaa", "speed": 99}).status_code == 422
+
+
+def test_playback_requires_login(auth_client):
+    assert auth_client.post(
+        "/api/playback/play", json={"session_id": "aaa"}).status_code == 401
+    assert auth_client.get("/api/playback").status_code == 401

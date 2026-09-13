@@ -56,6 +56,21 @@ class Settings(BaseSettings):
         default="auto",
         description="One of: auto, alsa, portable, mock, none.",
     )
+    midi_sink: str = Field(
+        default="auto",
+        description="MIDI output backend for playing sessions on the instrument. "
+                    "One of: auto, alsa, portable, mock, none.",
+    )
+
+    # --- playback ---
+    capture_during_playback: bool = Field(
+        default=False,
+        description=(
+            "Keep recording while a session is played out to the instrument. "
+            "Off by default: many pianos echo MIDI in to MIDI out, which would "
+            "make the app record its own playback."
+        ),
+    )
 
     @property
     def sessions_dir(self) -> Path:

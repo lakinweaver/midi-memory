@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.api import playback as playback_api
 from app.api import sessions as sessions_api
 from app.api import status as status_api
 from app.api import tags as tags_api
@@ -81,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     app.include_router(sessions_api.router)
+    app.include_router(playback_api.router)
     app.include_router(tags_api.router)
     app.include_router(status_api.router)
 

@@ -9,6 +9,7 @@ import pytest
 from app.db import Database
 from app.events import EventBus
 from app.midi.events import MidiEvent
+from app.midi.sink import MockSink as MockSinkBase
 from app.midi.source import MidiSource
 from app.service import CaptureService
 
@@ -117,3 +118,63 @@ async def test_shutdown_saves_the_session_in_progress(wired):
 
     assert db.search()["total"] == 1
     assert db.search()["items"][0]["note_count"] == 9
+
+
+class EchoingSink(MockSinkBase):
+    """A piano that echoes MIDI-in straight back out of MIDI-out.
+
+    Plenty of real instruments do this, and it is the failure mode that would
+    silently fill the library with recordings of its own playback.
+    """
+
+    def __init__(self, settings, source):
+        super().__init__(settings)
+        self.source = source
+
+    async def _deliver(self, event):
+        await super()._deliver(event)
+        self.source.emit(MidiEvent(time.monotonic(), event.status, event.data1, event.data2))
+
+
+async def test_device_playback_is_not_recorded_back(settings):
+    """Playing a session to the piano must not create a new session."""
+    settings.idle_seconds = 0.5
+    settings.min_seconds = 0.1
+    db = Database(settings.db_path)
+    bus = EventBus()
+    source = ScriptedSource(settings)
+
+    sink = EchoingSink(settings, source)
+    service = CaptureService(settings, db, bus, source=source, sink=sink)
+    await service.start()
+    try:
+        # A real recording to play back.
+        await source.play_phrase(notes=6)
+        await asyncio.sleep(2.5)
+        assert db.search()["total"] == 1
+        session_id = db.search()["items"][0]["id"]
+
+        await service.player.play(session_id)
+        await asyncio.sleep(1.0)
+        assert sink.sent, "the instrument should have received the performance"
+
+        await service.player.stop()
+        await asyncio.sleep(2.5)   # let any phantom session idle out
+
+        assert db.search()["total"] == 1, (
+            "the echoed playback was recorded as a new session - "
+            "this is the feedback loop the suppression exists to prevent"
+        )
+    finally:
+        await service.stop()
+
+
+async def test_capture_can_be_re_enabled_for_playing_along(settings):
+    """Opting in restores capture, for instruments that do not echo."""
+    settings.capture_during_playback = True
+    db = Database(settings.db_path)
+    source = ScriptedSource(settings)
+    sink = MockSinkBase(settings)
+    service = CaptureService(settings, db, EventBus(), source=source, sink=sink)
+
+    assert service._suppress_capture() is False

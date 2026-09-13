@@ -26,6 +26,8 @@
     mDate: document.getElementById('m-date'),
     mDuration: document.getElementById('m-duration'),
     mRange: document.getElementById('m-range'),
+    outputToggle: document.getElementById('output-toggle'),
+    rollWrap: document.querySelector('.roll-wrap'),
   };
 
   const state = {
@@ -41,7 +43,27 @@
     lo: 48, hi: 84,
     tags: data.tags || [],
     favorite: data.favorite,
+
+    // 'browser' renders audio here; 'piano' plays out through the instrument
+    // attached to the server, which is shared state across every open tab.
+    output: loadOutputPreference(),
+    outputAvailable: false,
+    // Last transport snapshot pushed by the server, plus when it arrived, so the
+    // playhead can be interpolated smoothly between updates.
+    remote: { playing: false, position: 0, at: 0, speed: 1, sessionId: null },
   };
+
+  function loadOutputPreference() {
+    try {
+      return localStorage.getItem('mm.output') === 'piano' ? 'piano' : 'browser';
+    } catch (_) { return 'browser'; }
+  }
+
+  function saveOutputPreference(value) {
+    try { localStorage.setItem('mm.output', value); } catch (_) {}
+  }
+
+  const onPiano = () => state.output === 'piano';
 
   /* ------------------------------------------------------------ the roll -- */
   const ctx2d = el.canvas.getContext('2d');
@@ -144,6 +166,11 @@
 
   /* ----------------------------------------------------------- transport -- */
   function currentPosition() {
+    if (onPiano()) {
+      if (!state.remote.playing) return state.remote.position;
+      const elapsed = (performance.now() - state.remote.at) / 1000 * state.remote.speed;
+      return Math.min(state.duration, state.remote.position + elapsed);
+    }
     if (!state.playing) return state.position;
     return state.anchorPos + (engine.time - state.anchorCtx) * state.speed;
   }
@@ -172,9 +199,16 @@
   }
 
   async function play() {
+    if (onPiano()) return playOnPiano();
     try {
+      // The sampled piano is a couple of megabytes and has to be decoded before
+      // the first note can sound. Say so, rather than looking broken.
+      const loading = engine.loadPending;
+      if (loading) el.play.classList.add('loading');
       await engine.unlock();
+      el.play.classList.remove('loading');
     } catch (err) {
+      el.play.classList.remove('loading');
       toast(err.message, 'error');
       return;
     }
@@ -186,6 +220,7 @@
   }
 
   function pause() {
+    if (onPiano()) { stopPiano(); return; }
     state.position = currentPosition();
     state.playing = false;
     engine.panic();
@@ -193,17 +228,72 @@
     draw();
   }
 
+  /* ------------------------------------------------- playing on the piano -- */
+  async function playOnPiano() {
+    try {
+      const status = await api('/api/playback/play', {
+        method: 'POST',
+        body: JSON.stringify({
+          session_id: data.id,
+          position: state.position >= state.duration - 0.05 ? 0 : state.position,
+          speed: state.speed,
+          loop: state.loop,
+        }),
+      });
+      applyRemote(status);
+      tick();
+    } catch (err) {
+      // 409 means the instrument went away; fall back rather than dead-ending.
+      toast(err.message, 'error');
+      setOutput('browser');
+    }
+  }
+
+  async function stopPiano() {
+    try {
+      applyRemote(await api('/api/playback/stop', { method: 'POST' }));
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  /** Adopt a transport snapshot from the server. */
+  function applyRemote(status) {
+    if (!status) return;
+    // Another session playing on the piano must not move this page's playhead.
+    const mine = status.session_id === data.id;
+    state.remote = {
+      playing: !!status.playing && mine,
+      position: mine ? (status.position || 0) : state.remote.position,
+      at: performance.now(),
+      speed: status.speed || 1,
+      sessionId: status.session_id,
+    };
+    if (!onPiano()) return;
+
+    state.playing = state.remote.playing;
+    state.speed = status.speed || state.speed;
+    state.loop = !!status.loop;
+    el.loop.classList.toggle('on', state.loop);
+    if (el.speed.value !== String(state.speed)) el.speed.value = String(state.speed);
+
+    if (!state.playing) {
+      state.position = mine ? (status.position || 0) : state.position;
+      draw(); paintScrub();
+    }
+    paintTransport();
+  }
+
   let raf = null, scheduleTimer = null;
   function tick() {
     cancelAnimationFrame(raf);
     clearInterval(scheduleTimer);
-    scheduleTimer = setInterval(schedule, 60);
+    // In piano mode the server owns the transport; this loop only animates.
+    if (!onPiano()) scheduleTimer = setInterval(schedule, 60);
 
     const frame = () => {
       if (!state.playing) return;
       const position = currentPosition();
 
-      if (position >= state.duration) {
+      if (!onPiano() && position >= state.duration) {
         if (state.loop) {
           engine.panic();
           reanchor(0);
@@ -241,14 +331,28 @@
       formatDuration(state.position * 1000) + ' / ' + formatDuration(state.duration * 1000);
   }
 
+  function seekTo(position) {
+    const target = Math.max(0, Math.min(position, state.duration));
+    if (onPiano()) {
+      state.position = target;
+      state.remote = { ...state.remote, position: target, at: performance.now() };
+      draw(); paintScrub();
+      api('/api/playback/seek', {
+        method: 'POST', body: JSON.stringify({ position: target }),
+      }).then(applyRemote).catch((err) => toast(err.message, 'error'));
+      return;
+    }
+    engine.panic();
+    reanchor(target);
+    draw();
+    paintScrub();
+  }
+
   function seekFromEvent(e) {
     const rect = el.scrub.getBoundingClientRect();
     const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    engine.panic();
-    reanchor(ratio * state.duration);
-    draw();
-    paintScrub();
+    seekTo(ratio * state.duration);
   }
 
   el.play.addEventListener('click', () => (state.playing ? pause() : play()));
@@ -269,32 +373,37 @@
     const jump = e.key === 'ArrowRight' ? 5 : e.key === 'ArrowLeft' ? -5 : 0;
     if (!jump) return;
     e.preventDefault();
-    engine.panic();
-    reanchor(state.position + jump);
-    draw(); paintScrub();
+    seekTo(state.position + jump);
   });
 
   el.canvas.addEventListener('click', (e) => {
     const rect = el.canvas.getBoundingClientRect();
     const usable = width - PAD_L - PAD_R;
     const ratio = (e.clientX - rect.left - PAD_L) / usable;
-    engine.panic();
-    reanchor(Math.max(0, Math.min(1, ratio)) * state.duration);
-    draw(); paintScrub();
+    seekTo(Math.max(0, Math.min(1, ratio)) * state.duration);
   });
 
   el.loop.addEventListener('click', () => {
     state.loop = !state.loop;
     el.loop.classList.toggle('on', state.loop);
+    if (onPiano()) pushRemoteConfig();
   });
 
   el.speed.addEventListener('change', () => {
     const wasPlaying = state.playing;
     const position = currentPosition();
     state.speed = parseFloat(el.speed.value);
+    if (onPiano()) { pushRemoteConfig(); return; }
     if (wasPlaying) { engine.panic(); reanchor(position); }
     else state.position = position;
   });
+
+  function pushRemoteConfig() {
+    api('/api/playback/config', {
+      method: 'POST',
+      body: JSON.stringify({ speed: state.speed, loop: state.loop }),
+    }).then(applyRemote).catch((err) => toast(err.message, 'error'));
+  }
 
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea, select')) return;
@@ -392,6 +501,60 @@
   el.tagInput.addEventListener('change', commitTag);
   el.tagInput.addEventListener('blur', commitTag);
 
+  /* ------------------------------------------------------- output toggle -- */
+  function paintOutputToggle() {
+    el.outputToggle.querySelectorAll('.seg-opt').forEach((button) => {
+      const isPiano = button.dataset.output === 'piano';
+      const active = button.dataset.output === state.output;
+      button.classList.toggle('on', active);
+      button.setAttribute('aria-pressed', String(active));
+      button.disabled = isPiano && !state.outputAvailable;
+      if (isPiano) {
+        button.title = state.outputAvailable
+          ? 'Play through the connected instrument'
+          : 'No MIDI instrument is connected to the server';
+      }
+    });
+    el.rollWrap.classList.toggle('remote', onPiano() && state.playing);
+  }
+
+  function setOutput(next) {
+    if (next === state.output) return;
+    // Never leave the old destination sounding.
+    if (state.playing) {
+      if (onPiano()) stopPiano(); else pause();
+    }
+    state.output = next;
+    saveOutputPreference(next);
+    state.playing = false;
+    paintOutputToggle();
+    paintTransport();
+    paintScrub();
+  }
+
+  el.outputToggle.addEventListener('click', (e) => {
+    const button = e.target.closest('.seg-opt');
+    if (!button || button.disabled) return;
+    setOutput(button.dataset.output);
+  });
+
+  // The instrument is shared: another tab (or the end of the piece) changes the
+  // transport underneath us, so follow whatever the server reports.
+  document.addEventListener('midi:playback', (e) => {
+    applyRemote(e.detail.playback);
+    if (onPiano() && state.playing) tick();
+    paintOutputToggle();
+  });
+
+  document.addEventListener('midi:output_status', (e) => {
+    state.outputAvailable = !!e.detail.connected;
+    if (!state.outputAvailable && onPiano()) {
+      toast('The instrument disconnected - switching to browser playback');
+      setOutput('browser');
+    }
+    paintOutputToggle();
+  });
+
   /* ---------------------------------------------------------------- boot -- */
   async function boot() {
     el.mDate.textContent = formatDate(el.mDate.dataset.iso);
@@ -414,6 +577,19 @@
     } catch (err) {
       toast('Could not load the recording: ' + err.message, 'error');
     }
+
+    // Find out whether an instrument is attached, and adopt any playback that is
+    // already running -- possibly started from another tab.
+    try {
+      const status = await api('/api/status');
+      state.outputAvailable = !!(status.output && status.output.connected);
+      applyRemote(status.playback);
+      if (onPiano() && state.playing) tick();
+    } catch (_) {
+      state.outputAvailable = false;
+    }
+    if (!state.outputAvailable && onPiano()) state.output = 'browser';
+    paintOutputToggle();
 
     resize();
     paintScrub();
