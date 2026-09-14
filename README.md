@@ -8,7 +8,19 @@ Using a lightweight Raspberry Pi client, anything you play on a MIDI keyboard is
 own **session** and sent to a server on your network, where you browse, search, tag,
 replay and download it. The client records continuously and catalogs all MIDI data it receives.
 
-It comes in two parts:
+## Disclosure and Credits 
+
+This project is 90% "vibe-coded" with Claude Code. My feelings on AI are mixed, but the ability to _quickly_ deploy a problem-solving app like this one is too useful for me to discount. While I am familiar with the web stack I asked Claude to use and have written similar projects by hand in the past, I have made no effort to audit the code. **This app simply fills a need for me, and I'm making the repo public in case it does for you, too.**
+
+Piano samples are the [Salamander Grand Piano](https://archive.org/details/SalamanderGrandPianoV3)
+by Alexander Holm, licensed **CC BY 3.0**, as redistributed by the Tone.js project.
+Typefaces are [Fraunces](https://fonts.google.com/specimen/Fraunces) and
+[DM Mono](https://fonts.google.com/specimen/DM+Mono), both SIL Open Font License,
+served locally so the app works with no internet connection.
+
+## How it works
+
+The app is built to run in at least two separate places (the server + one client):
 
 | | Runs on | Job |
 | --- | --- | --- |
@@ -356,13 +368,3 @@ the recorder with a fake clock, so session splitting, held-note suppression and 
 recovery are verified without waiting in real time or needing a keyboard. The uploader
 tests run a real client against the real server app over httpx's ASGI transport, so the
 join between the two halves is tested with only the socket replaced.
-
-## Disclosure and Credits 
-
-This project is 90% "vibe-coded" with Claude Code. My feelings on AI are mixed, but the ability to _quickly_ deploy a problem-solving app like this one is too useful for me to discount. While I am familiar with the web stack I asked Claude to use and have written similar projects by hand in the past, I have made no effort to audit the code. **This app simply fills a need for me, and I'm making the repo public in case it does for you, too.**
-
-Piano samples are the [Salamander Grand Piano](https://archive.org/details/SalamanderGrandPianoV3)
-by Alexander Holm, licensed **CC BY 3.0**, as redistributed by the Tone.js project.
-Typefaces are [Fraunces](https://fonts.google.com/specimen/Fraunces) and
-[DM Mono](https://fonts.google.com/specimen/DM+Mono), both SIL Open Font License,
-served locally so the app works with no internet connection.
