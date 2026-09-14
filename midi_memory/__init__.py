@@ -5,6 +5,6 @@ both apps report it, and both UIs show it, so a release is a single edit.
 """
 
 __version__ = "1.0.0"
-__author__ = "lakinweaver"
+__author__ = "Lakin Weaver"
 __license__ = "MIT"
-__copyright__ = "Copyright (c) 2026 lakinweaver"
+__copyright__ = "Copyright (c) 2026 Lakin Weaver"
