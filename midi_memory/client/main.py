@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from midi_memory import __version__
 from midi_memory.client.api import router as api_router
 from midi_memory.client.capture import CaptureService
 from midi_memory.client.config import Settings, get_settings
@@ -39,6 +40,7 @@ def asset_url(path: str) -> str:
 
 
 templates.env.globals["static"] = asset_url
+templates.env.globals["app_version"] = __version__
 
 
 def create_app(settings: Settings | None = None, *,
@@ -78,7 +80,7 @@ def create_app(settings: Settings | None = None, *,
                 await app.state.uploader.stop()
                 await app.state.service.stop()
 
-    app = FastAPI(title="MIDI Memory Client", lifespan=lifespan,
+    app = FastAPI(title="MIDI Memory Client", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 

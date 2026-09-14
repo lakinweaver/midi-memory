@@ -50,6 +50,12 @@
   <main class="page">
     {% block content %}{% endblock %}
   </main>
+
+  <footer class="app-foot">
+    <span class="foot-mark">MIDI<b>Memory</b></span>
+    <span class="foot-sep">·</span>
+    <span>v{{ app_version }}</span>
+  </footer>
 </div>
 
 <dialog class="sheet" id="settings-dialog" aria-labelledby="settings-title">
@@ -107,6 +113,18 @@
           <span class="hint">Recorded piano, used for playback in the browser. Without
             them the player falls back to a synthesised tone, which is fine for checking
             notes but not for judging an idea. About 2 MB, fetched once.</span>
+        </div>
+      </section>
+
+      <section class="fieldset">
+        <h3>About</h3>
+        <div class="about">
+          <div class="about-line"><b>MIDI Memory</b> v{{ app_version }}</div>
+          <div class="about-line">{{ app_copyright }}</div>
+          <div class="about-line">
+            Released under the {{ app_license }} License: free to use, change and
+            share, with no warranty of any kind.
+          </div>
         </div>
       </section>
 

@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from midi_memory import __author__, __copyright__, __license__, __version__
 from midi_memory.server import samples
 from midi_memory.server.api import clients as clients_api
 from midi_memory.server.api import ingest as ingest_api
@@ -50,6 +51,11 @@ def asset_url(path: str) -> str:
 
 
 templates.env.globals["static"] = asset_url
+# Every page shows the version; the settings dialog shows the rest.
+templates.env.globals["app_version"] = __version__
+templates.env.globals["app_author"] = __author__
+templates.env.globals["app_license"] = __license__
+templates.env.globals["app_copyright"] = __copyright__
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -75,7 +81,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sweeper.cancel()
             await asyncio.gather(sweeper, return_exceptions=True)
 
-    app = FastAPI(title="MIDI Memory", lifespan=lifespan, docs_url=None, redoc_url=None)
+    app = FastAPI(title="MIDI Memory", version=__version__, lifespan=lifespan,
+                  docs_url=None, redoc_url=None)
 
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 

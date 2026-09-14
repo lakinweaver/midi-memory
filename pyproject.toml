@@ -1,6 +1,7 @@
 [project]
 name = "midi-memory"
-version = "0.2.0"
+# Read from midi_memory.__version__ so there is one place to bump.
+dynamic = ["version"]
 description = "Always-on MIDI notepad: capture clients record a digital piano continuously and file the ideas into a browsable library on a server."
 requires-python = ">=3.10"
 dependencies = [
@@ -31,6 +32,9 @@ midi-memory-client = "midi_memory.client.__main__:main"
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "midi_memory.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["midi_memory*"]

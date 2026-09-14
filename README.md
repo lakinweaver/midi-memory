@@ -224,7 +224,7 @@ To fill the library without a client at all:
 ```
 
 ```bash
-.venv/bin/python -m pytest                        # 137 tests
+.venv/bin/python -m pytest                        # 156 tests
 .venv/bin/python -m midi_memory.tools.ports       # what MIDI ports can this machine see?
 ```
 
@@ -325,6 +325,13 @@ interpreter.
 All events are timestamped with `time.monotonic()` when received. On a Pi the
 USB-to-userspace jitter is well under a millisecond — far finer than matters here — and
 a single clock keeps recording, replay and crash recovery consistent.
+
+### Version
+
+`midi_memory/__init__.py` holds `__version__`, and it is the only place a version
+number is written down. `pyproject.toml` reads it from there, both apps report it as
+their FastAPI version (so a client sees it in the handshake), and both UIs show it in
+their footer. Releasing is one edit.
 
 ### The icon
 
