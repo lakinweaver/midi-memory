@@ -76,8 +76,7 @@ docker compose up -d --build
 ### 2. Register a client
 
 In the server's **Settings → Capture clients**, add a client and name it. It shows a
-secret **once**; only its hash is stored, so it cannot be shown again. Losing it costs
-one click on "New secret".
+secret **once**; only its hash is stored, so it cannot be shown again. If it is lost, you can always request a new one with "New secret".
 
 ### 3. The client
 
