@@ -285,7 +285,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   animation: rise .4s var(--ease) both;
 }
 @keyframes rise { from { opacity: 0; transform: translateY(7px); } }
-.row:hover { background: var(--surface); }
 .row.fresh { animation: flash 1.8s var(--ease); }
 @keyframes flash {
   0%   { background: rgba(232,145,63,.22); }
@@ -318,8 +317,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .row-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
 .row-tags .pip { height: 20px; font-size: 10px; padding: 0 8px; cursor: default; }
 
-.row-actions { display: flex; gap: 3px; opacity: 0; transition: opacity .15s var(--ease); }
-.row:hover .row-actions, .row:focus-within .row-actions { opacity: 1; }
+/* Actions are simply present by default. Only a device that can actually hover
+   hides them until you do -- and hides them by making them unclickable as well
+   as invisible, because opacity alone leaves a live target sitting there. On a
+   touch screen that meant a tap towards the right of a row hit an invisible
+   delete button instead of opening the recording. */
+.row-actions { display: flex; gap: 3px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .row-actions {
+    opacity: 0; pointer-events: none;
+    transition: opacity .15s var(--ease);
+  }
+  .row:hover .row-actions,
+  .row:focus-within .row-actions { opacity: 1; pointer-events: auto; }
+  .row:hover { background: var(--surface); }
+}
 .icon-btn {
   width: 30px; height: 30px; display: grid; place-items: center;
   background: none; border: 1px solid transparent; border-radius: var(--r-sm);
@@ -637,7 +650,6 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
   .strip { width: 56px; height: 34px; }
   .row-title { font-size: 15px; }
   .icon-btn { width: 27px; height: 27px; }
-  .row-actions { opacity: 1; }
   .transport { flex-wrap: wrap; gap: 10px; }
   .scrub { order: 10; flex-basis: 100%; }
   .dur { display: none; }
