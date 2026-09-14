@@ -65,4 +65,8 @@ if [ "$owner_uid:$owner_gid" != "$PUID:$PGID" ]; then
   fi
 fi
 
+# Always say who we ended up as. Silence on the happy path is a nice property
+# right up until someone needs to tell a running container from the stale image
+# it replaced, which is the one moment this output is worth anything.
+log "Starting the server as $PUID:$PGID (data directory $DATA_DIR)"
 exec gosu "$PUID:$PGID" "$@"
