@@ -123,6 +123,29 @@ dl.readonly { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; mar
 dl.readonly dt { color: var(--muted); }
 dl.readonly dd { margin: 0; color: var(--cream-dim); word-break: break-all; }
 
+/* ---------------------------------------------------------------- savebar -- */
+/* Pinned, because the thing it saves is at the top of a long page and the
+   button used to be at the bottom of it -- which read as though the buttons
+   under the fields already worked on what you had typed. */
+.savebar {
+  position: sticky; bottom: 0; z-index: 5;
+  margin: 28px -16px 0; padding: 0 16px;
+  /* A flat translucent panel with a real edge, not a fade. A gradient left the
+     text sitting on nothing in particular, which read as floating. */
+  background: rgba(16, 14, 12, .92);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.savebar-inner {
+  max-width: 680px; margin: 0 auto;
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 0 18px;
+}
+.savebar-note { flex: 1; font-size: 12px; color: var(--muted); }
+.savebar.dirty { border-top-color: var(--amber); }
+.savebar.dirty .savebar-note { color: var(--amber); }
+
 /* ----------------------------------------------------------------- toasts -- */
 .toasts { position: fixed; left: 0; right: 0; bottom: 18px; display: grid;
           justify-items: center; gap: 8px; pointer-events: none; }

@@ -32,6 +32,10 @@ REQUEST_TIMEOUT = 60.0
 class LinkState:
     """What the settings page shows about the connection to the server."""
 
+    # Whether we have tried at all since the settings last changed. Without it,
+    # a freshly saved address reads as "unreachable" until the next heartbeat --
+    # which is the exact moment someone is least sure they typed it correctly.
+    checked: bool = False
     reachable: bool = False
     authenticated: bool = False
     last_error: str = ""
@@ -42,6 +46,7 @@ class LinkState:
 
     def as_dict(self, pending: int) -> dict:
         return {
+            "checked": self.checked,
             "reachable": self.reachable,
             "authenticated": self.authenticated,
             "last_error": self.last_error,
@@ -83,12 +88,26 @@ class Uploader:
         """A session just finished: drain now rather than at the next poll."""
         self._wake.set()
 
+    def settings_changed(self) -> None:
+        """The link was reconfigured: forget what we knew and find out again."""
+        self.state.checked = False
+        self.state.reachable = False
+        self.state.authenticated = False
+        self.state.last_error = ""
+        self._backoff = BACKOFF_START
+        self._wake.set()
+
     # -- plumbing ------------------------------------------------------------
-    def _default_client(self) -> httpx.AsyncClient:
+    def _default_client(self, base_url: str = "", secret: str = "") -> httpx.AsyncClient:
+        """The saved settings, unless the caller is trying something else.
+
+        "Test connection" passes what is typed into the page but not yet saved,
+        which is the only way that button can mean what it appears to mean.
+        """
         return httpx.AsyncClient(
-            base_url=self.settings.server_url.rstrip("/"),
+            base_url=(base_url or self.settings.server_url).rstrip("/"),
             timeout=REQUEST_TIMEOUT,
-            headers={"Authorization": f"Bearer {self.settings.client_secret}"},
+            headers={"Authorization": f"Bearer {secret or self.settings.client_secret}"},
             follow_redirects=False,
         )
 
@@ -171,6 +190,7 @@ class Uploader:
 
         if response.status_code in (200, 201):
             self.spool.complete(session.id)
+            self.state.checked = True
             self.state.reachable = True
             self.state.authenticated = True
             self.state.last_error = ""
@@ -184,6 +204,7 @@ class Uploader:
         if response.status_code in (401, 403):
             # Retrying cannot help: the secret is wrong or the client is revoked.
             # Say so on the settings page instead of hammering the server.
+            self.state.checked = True
             self.state.reachable = True
             self.state.authenticated = False
             self.state.last_error = (
@@ -237,12 +258,14 @@ class Uploader:
                 self._note_failure(f"Cannot reach the server: {exc.__class__.__name__}")
                 return False
         if response.status_code == 200:
+            self.state.checked = True
             self.state.reachable = True
             self.state.authenticated = True
             self.state.last_contact_at = time.time()
             self.state.last_error = ""
             return True
         if response.status_code in (401, 403):
+            self.state.checked = True
             self.state.reachable = True
             self.state.authenticated = False
             self.state.last_error = "The server rejected this client's secret."
@@ -250,33 +273,50 @@ class Uploader:
         self._note_failure(f"Server answered {response.status_code}")
         return False
 
-    async def hello(self) -> dict:
-        """One-shot check for the settings page's 'Test connection' button."""
-        if not self.settings.server_url:
+    async def hello(self, server_url: str = "", client_secret: str = "") -> dict:
+        """One-shot check for the settings page's 'Test connection' button.
+
+        Tests the address and secret it is given, falling back to the saved ones
+        for whichever is not supplied -- so the button works on what is on the
+        screen, before any of it has been committed to the device.
+        """
+        server_url = (server_url or self.settings.server_url).strip()
+        client_secret = (client_secret or self.settings.client_secret).strip()
+        if not server_url:
             return {"ok": False, "error": "No server address set."}
-        if not self.settings.client_secret:
+        if not client_secret:
             return {"ok": False, "error": "No client secret set."}
-        async with self._client_factory() as client:
+        async with self._client_factory(base_url=server_url, secret=client_secret) as client:
             try:
                 response = await client.post("/api/ingest/hello")
             except httpx.HTTPError as exc:
-                self.state.reachable = False
-                return {"ok": False, "error": f"Could not reach the server ({exc.__class__.__name__})."}
+                return {"ok": False,
+                        "error": f"Could not reach the server ({exc.__class__.__name__})."}
+        # Only update the link state when this probed the settings actually in
+        # force. Testing a candidate address must not make the page claim the
+        # client is connected to something it has not been told to use.
+        probing_saved = (server_url == self.settings.server_url.strip()
+                         and client_secret == self.settings.client_secret.strip())
         if response.status_code == 200:
-            self.state.reachable = True
-            self.state.authenticated = True
-            self.state.last_error = ""
-            self.state.last_contact_at = time.time()
+            if probing_saved:
+                self.state.checked = True
+                self.state.reachable = True
+                self.state.authenticated = True
+                self.state.last_error = ""
+                self.state.last_contact_at = time.time()
             body = response.json()
             return {"ok": True, "client_name": body.get("client_name", ""),
                     "client_id": body.get("client_id", "")}
         if response.status_code in (401, 403):
-            self.state.reachable = True
-            self.state.authenticated = False
+            if probing_saved:
+                self.state.checked = True
+                self.state.reachable = True
+                self.state.authenticated = False
             return {"ok": False, "error": "The server did not accept that secret."}
         return {"ok": False, "error": f"The server answered {response.status_code}."}
 
     def _note_failure(self, message: str) -> None:
+        self.state.checked = True
         self.state.reachable = False
         self.state.authenticated = False
         self.state.last_error = message

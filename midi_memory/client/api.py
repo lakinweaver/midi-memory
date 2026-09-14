@@ -48,6 +48,7 @@ async def get_settings(request: Request) -> dict:
 
 @router.put("/settings")
 async def update_settings(request: Request, payload: SettingsUpdate) -> dict:
+    settings = request.app.state.settings
     changes = payload.model_dump(exclude_none=True)
     for key in ("device_match", "server_url", "client_secret", "client_name"):
         if key in changes:
@@ -58,19 +59,46 @@ async def update_settings(request: Request, payload: SettingsUpdate) -> dict:
         changes.pop("client_secret", None)
     if "server_url" in changes:
         changes["server_url"] = changes["server_url"].rstrip("/")
+    before = (settings.server_url, settings.client_secret)
     request.app.state.settings_store.save(changes)
+    uploader = request.app.state.uploader
+    if (settings.server_url, settings.client_secret) != before:
+        # Whatever we knew about the old address says nothing about the new one.
+        uploader.settings_changed()
+        await uploader.heartbeat()
     # A newly filled-in link should start draining the spool immediately.
-    request.app.state.uploader.nudge()
+    uploader.nudge()
     return _payload(request)
 
 
+class ConnectionTest(BaseModel):
+    """What to test. Omitted fields fall back to whatever is already saved."""
+
+    server_url: Optional[str] = Field(default=None, max_length=300)
+    client_secret: Optional[str] = Field(default=None, max_length=300)
+
+
 @router.post("/test-connection")
-async def test_connection(request: Request) -> dict:
-    return await request.app.state.uploader.hello()
+async def test_connection(request: Request,
+                          payload: Optional[ConnectionTest] = None) -> dict:
+    """Try an address and secret without committing them to the device.
+
+    The page sends what is typed into it, which is the only way a button sitting
+    under those fields can mean what it looks like it means.
+    """
+    payload = payload or ConnectionTest()
+    return await request.app.state.uploader.hello(
+        server_url=(payload.server_url or "").strip(),
+        client_secret=(payload.client_secret or "").strip(),
+    )
 
 
 @router.post("/upload-now")
 async def upload_now(request: Request) -> dict:
-    """Drain the spool on demand, so the page can show the result immediately."""
+    """Drain the spool on demand, so the page can show the result immediately.
+
+    Unlike the connection test, this acts on the saved settings: it is a real
+    upload to wherever this client is configured to send things, not a trial.
+    """
     sent = await request.app.state.uploader.drain()
     return {"uploaded": sent, **_payload(request)}

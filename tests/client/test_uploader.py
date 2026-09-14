@@ -44,11 +44,13 @@ def uploader(settings, spool, server, secret):
     settings.server_url = "http://server.test"
     settings.client_secret = secret
 
-    def factory():
+    def factory(base_url: str = "", secret: str = ""):
+        # base_url is ignored: everything is one in-process app here. The secret
+        # is not, so a test of the wrong one still fails the way it should.
         return httpx.AsyncClient(
             transport=httpx.ASGITransport(app=server.app),
             base_url="http://server.test",
-            headers={"Authorization": f"Bearer {settings.client_secret}"},
+            headers={"Authorization": f"Bearer {secret or settings.client_secret}"},
         )
 
     return Uploader(settings, spool, client_factory=factory,
@@ -140,7 +142,7 @@ async def test_an_unreachable_server_loses_nothing(settings, spool, uploader):
     """The whole point of the spool: the piano stays recorded when the server is not."""
     spool_a_session(settings, spool, "aaaaaaaaaaaaaaaa")
 
-    def broken():
+    def broken(base_url: str = "", secret: str = ""):
         return httpx.AsyncClient(
             transport=httpx.MockTransport(
                 lambda request: (_ for _ in ()).throw(httpx.ConnectError("refused"))),
@@ -161,7 +163,7 @@ async def test_the_backlog_drains_once_the_server_comes_back(settings, spool, se
         spool_a_session(settings, spool, session_id)
         time.sleep(0.01)
 
-    def broken():
+    def broken(base_url: str = "", secret: str = ""):
         return httpx.AsyncClient(
             transport=httpx.MockTransport(
                 lambda request: (_ for _ in ()).throw(httpx.ConnectError("refused"))),
@@ -208,7 +210,7 @@ async def test_an_id_another_client_already_used_is_re_filed(settings, spool,
     other = server.post("/api/clients", json={"name": "Grand"}).json()["secret"]
     other_uploader = Uploader(
         settings.model_copy(update={"client_secret": other}), spool,
-        client_factory=lambda: httpx.AsyncClient(
+        client_factory=lambda base_url="", secret="": httpx.AsyncClient(
             transport=httpx.ASGITransport(app=server.app),
             base_url="http://server.test",
             headers={"Authorization": f"Bearer {other}"}),
@@ -226,3 +228,68 @@ async def test_an_id_another_client_already_used_is_re_filed(settings, spool,
 
     assert await uploader.drain() == 1
     assert server.get("/api/sessions").json()["total"] == 2
+
+
+# -- testing a connection before committing to it ----------------------------
+async def test_the_connection_test_uses_what_it_is_given_not_what_is_saved(
+        settings, spool, server, uploader):
+    """The button sits under the fields, so it has to test what is in them.
+
+    Nothing is saved at this point: the client is still configured with the
+    secret it had before, and must stay that way until Save is pressed.
+    """
+    fresh = server.post("/api/clients", json={"name": "Grand"}).json()["secret"]
+    saved_before = settings.client_secret
+
+    result = await uploader.hello(server_url="http://server.test",
+                                  client_secret=fresh)
+
+    assert result["ok"] is True
+    assert result["client_name"] == "Grand", "it tested the secret it was handed"
+    assert settings.client_secret == saved_before, "and committed nothing"
+
+
+async def test_a_failed_test_of_unsaved_values_does_not_mark_the_link_broken(
+        settings, spool, server, uploader):
+    """Typing a wrong secret and pressing Test must not make the page claim the
+    client has lost a connection that is in fact still working."""
+    assert await uploader.heartbeat() is True
+    assert uploader.state.authenticated is True
+
+    result = await uploader.hello(client_secret="not-the-right-secret")
+
+    assert result["ok"] is False
+    assert uploader.state.authenticated is True, "the saved link is untouched"
+    assert uploader.state.last_error == ""
+
+
+async def test_testing_the_saved_values_does_update_the_link(settings, spool,
+                                                             server, uploader):
+    """Pressing Test with the fields untouched is a check of the real link, so
+    its result should be reflected -- that is the whole point of the button."""
+    uploader.state.authenticated = False
+    uploader.state.last_error = "stale"
+
+    assert (await uploader.hello())["ok"] is True
+
+    assert uploader.state.authenticated is True
+    assert uploader.state.last_error == ""
+
+
+async def test_an_unreachable_candidate_address_is_reported_not_recorded(
+        settings, spool, server, uploader):
+    assert await uploader.heartbeat() is True
+
+    def broken(base_url: str = "", secret: str = ""):
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: (_ for _ in ()).throw(httpx.ConnectError("refused"))),
+            base_url="http://nowhere.test",
+        )
+
+    uploader._client_factory = broken
+    result = await uploader.hello(server_url="http://nowhere.test")
+
+    assert result["ok"] is False
+    assert "Could not reach the server" in result["error"]
+    assert uploader.state.reachable is True, "the saved link is still fine"

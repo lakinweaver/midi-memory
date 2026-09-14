@@ -15,8 +15,25 @@
   // 2-second poll -- nothing is more annoying than a form that fights back.
   let dirty = new Set();
   Object.entries(f).forEach(([key, input]) => {
-    input.addEventListener('input', () => dirty.add(key));
+    input.addEventListener('input', () => { dirty.add(key); paintDirty(); });
   });
+
+  // Saving used to be a button at the bottom of a long page, which made the
+  // buttons sitting under the connection fields look like they already acted on
+  // what you had typed. The bar is pinned and says when something is pending.
+  function paintDirty() {
+    const bar = el('savebar');
+    const pending = dirty.size > 0;
+    bar.classList.toggle('dirty', pending);
+    el('savebar-note').textContent = pending
+      ? 'Unsaved changes — this client is still using its previous settings.'
+      : 'Everything here is saved.';
+  }
+
+  // Whether the connection fields differ from what the device is actually using.
+  function connectionDirty() {
+    return dirty.has('server') || dirty.has('secret');
+  }
 
   async function api(path, options) {
     const res = await fetch(path, Object.assign({
@@ -81,6 +98,10 @@
     const vLink = el('v-link');
     if (!s.server_url || !s.client_secret) {
       lampLink.className = 'lamp'; vLink.textContent = 'not configured';
+    } else if (!link.checked) {
+      // Configured, but nothing has been tried since. Saying "unreachable" here
+      // would be a guess, and a discouraging one right after setup.
+      lampLink.className = 'lamp'; vLink.textContent = 'checking…';
     } else if (link.authenticated) {
       lampLink.className = 'lamp on'; vLink.textContent = 'connected';
     } else if (link.reachable) {
@@ -138,6 +159,7 @@
       dirty = new Set();
       f.secret.value = '';
       paint(payload);
+      paintDirty();
       toast('Settings saved');
     } catch (err) { toast(err.message, 'error'); }
   }
@@ -145,10 +167,25 @@
   async function test() {
     const button = el('test');
     button.disabled = true;
+    // Send what is on screen, not what is saved: the button sits under these
+    // fields, so that is what it has to mean. A blank secret falls back to the
+    // stored one, since the page cannot show it to be re-submitted.
+    const body = {
+      server_url: f.server.value.trim(),
+      client_secret: f.secret.value.trim(),
+    };
     try {
-      const result = await api('/api/test-connection', { method: 'POST' });
-      if (result.ok) toast('Connected — the server knows this client as “' + result.client_name + '”');
-      else toast(result.error, 'error');
+      const result = await api('/api/test-connection', {
+        method: 'POST', body: JSON.stringify(body),
+      });
+      if (result.ok) {
+        toast('Connected — the server knows this client as “' + result.client_name + '”');
+        if (connectionDirty()) {
+          toast('Save to start using these settings');
+        }
+      } else {
+        toast(result.error, 'error');
+      }
     } catch (err) {
       toast(err.message, 'error');
     } finally {
@@ -158,6 +195,12 @@
   }
 
   async function uploadNow() {
+    // This one genuinely uses the saved settings -- it is a real upload, not a
+    // trial -- so say so rather than quietly sending to the old address.
+    if (connectionDirty()) {
+      toast('Save your connection settings first', 'error');
+      return;
+    }
     const button = el('upload-now');
     button.disabled = true;
     try {
@@ -177,6 +220,7 @@
   el('test').addEventListener('click', test);
   el('upload-now').addEventListener('click', uploadNow);
 
+  paintDirty();
   refresh();
   setInterval(refresh, POLL_MS);
 })();

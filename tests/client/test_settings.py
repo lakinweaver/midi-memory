@@ -115,3 +115,55 @@ def test_settings_require_login(auth_settings):
 def auth_settings(settings):
     settings.password = "hunter2"
     return settings
+
+
+# -- the connection test, over HTTP ------------------------------------------
+def test_the_test_endpoint_accepts_values_that_are_not_saved_yet(client):
+    """What the page sends when you press Test with the fields filled in."""
+    response = client.post("/api/test-connection", json={
+        "server_url": "http://nowhere.invalid:9",
+        "client_secret": "typed-but-not-saved",
+    })
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["ok"] is False, "nothing is listening there"
+    assert "reach the server" in body["error"]
+    # And crucially, none of it stuck.
+    assert client.app.state.settings.server_url == ""
+    assert client.app.state.settings.client_secret == ""
+
+
+def test_the_test_endpoint_still_works_with_no_body(client):
+    """Pressing Test with nothing typed falls back to the saved settings."""
+    body = client.post("/api/test-connection").json()
+    assert body == {"ok": False, "error": "No server address set."}
+
+
+def test_saving_a_new_address_rechecks_rather_than_assuming(client):
+    """Right after setup is when someone is least sure they typed it correctly,
+    so the page must not claim 'unreachable' before anything has been tried."""
+    uploader = client.app.state.uploader
+    uploader.state.checked = True
+    uploader.state.reachable = True
+    uploader.state.authenticated = True
+
+    client.put("/api/settings", json={"server_url": "http://nowhere.invalid:9",
+                                      "client_secret": "whatever"})
+
+    link = client.get("/api/status").json()["link"]
+    assert link["checked"] is True, "the save triggers an immediate check"
+    assert link["authenticated"] is False, "and the old verdict does not carry over"
+
+
+def test_changing_an_unrelated_setting_leaves_the_link_alone(client):
+    """Only the address and secret say anything about the connection."""
+    uploader = client.app.state.uploader
+    uploader.state.checked = True
+    uploader.state.reachable = True
+    uploader.state.authenticated = True
+
+    client.put("/api/settings", json={"idle_seconds": 30})
+
+    link = client.get("/api/status").json()["link"]
+    assert link["authenticated"] is True, "nothing about the server changed"

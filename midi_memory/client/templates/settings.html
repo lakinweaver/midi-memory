@@ -71,6 +71,9 @@
         <button class="btn" type="button" id="test">Test connection</button>
         <button class="btn" type="button" id="upload-now">Upload now</button>
       </div>
+      <p class="hint" id="test-hint">“Test connection” tries the address and secret
+        typed above without saving them. “Upload now” sends waiting recordings to
+        the server this client is already using.</p>
     </div>
   </section>
 
@@ -114,8 +117,11 @@
     </div>
   </section>
 
-  <div class="actions">
-    <span class="spacer"></span>
+</div>
+
+<div class="savebar" id="savebar">
+  <div class="savebar-inner">
+    <span class="savebar-note" id="savebar-note">Everything here is saved.</span>
     <button class="btn primary" type="button" id="save">Save settings</button>
   </div>
 </div>
