@@ -113,6 +113,15 @@ Then open the address it prints — `http://<pi>:8081` — and paste in the serv
 and the secret. That is the only configuration either half needs; everything else has a
 working default.
 
+The client's page has its own password, generated on the first install and printed once.
+If you have lost it, or re-ran the installer and never saw it, it is in `.env`:
+
+```bash
+grep MIDI_MEMORY_PASSWORD ~/midi-memory/.env
+```
+
+Change it there and `sudo systemctl restart midi-memory-client`.
+
 **Run it as yourself, not with `sudo`.** The script calls `sudo` for the handful of
 steps that need it (apt, systemd, `/var/lib`). Running the whole thing as root creates
 the virtualenv and `.env` owned by root inside your home directory, and the service —

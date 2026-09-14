@@ -211,10 +211,26 @@ echo "    1. Open the MIDI Memory server and go to Settings -> Capture clients."
 echo "    2. Add a client, name it, and copy the secret it shows you."
 echo "    3. Open ${URL} and paste the server address and that secret."
 echo
+
+# Always say something about the password, not just on the run that generated
+# one. Re-running the installer is normal -- it is how you upgrade -- and a
+# second run that says nothing leaves no clue that the page even has a password,
+# let alone where it lives.
 if [[ -n "${GENERATED_PASSWORD:-}" ]]; then
-  echo "  This page's password: ${GENERATED_PASSWORD}   (generated; change it in $APP_DIR/.env)"
-  echo
+  echo "  The password for that page: ${GENERATED_PASSWORD}"
+  echo "  Written to $APP_DIR/.env. Change it there and restart the service."
+elif grep -qE '^MIDI_MEMORY_PASSWORD=.+$' .env 2>/dev/null; then
+  # Deliberately not echoed: it is already on disk, and re-printing it on every
+  # upgrade would scatter it through shell history and journal logs.
+  echo "  That page has a password, set in $APP_DIR/.env. To see it:"
+  echo "      grep MIDI_MEMORY_PASSWORD $APP_DIR/.env"
+else
+  echo "  That page has NO password -- anyone on your network can open it and"
+  echo "  change where this client sends recordings. To set one:"
+  echo "      nano $APP_DIR/.env        # set MIDI_MEMORY_PASSWORD=something"
+  echo "      sudo systemctl restart $SERVICE_NAME"
 fi
+echo
 echo "  Also at: http://$(hostname).local:${PORT}/"
 echo
 echo "  MIDI ports seen right now:"
