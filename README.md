@@ -2,12 +2,13 @@
 
 An always-on notepad for the ideas you play and forget.
 
-Leave a Raspberry Pi connected to your digital piano and it listens continuously.
-Anything you play is captured, and when you stop for a while the take is filed as its
-own **session** and sent to a server on your network, where you browse, search, tag,
-replay and download it. There is no record button — that is the whole point.
+As a musician and composer, I have spent a good chunk of my life trying to remember the melody I just played or the chords I just came up with minutes ago at the piano. There are several devices on the market now that allow you to record the MIDI output from your keyboard to provide a running "memory" of the ideas you create at the keyboard. These are awesome, but I wanted to create a similar system that allowed me to capture my ideas and store them on my home server. This project is the result!
 
-It comes in two halves:
+Using a lightweight Raspberry Pi client, anything you play on a MIDI keyboard is captured, and when you stop for a while the take is filed as its
+own **session** and sent to a server on your network, where you browse, search, tag,
+replay and download it. The client records continuously and catalogs all MIDI data it receives.
+
+It comes in two parts:
 
 | | Runs on | Job |
 | --- | --- | --- |
