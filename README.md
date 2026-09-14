@@ -328,8 +328,9 @@ a single clock keeps recording, replay and crash recovery consistent.
 
 ### The icon
 
-`midi_memory/server/static/brand/icon.svg` is the source: a placeholder mark, the app's
-ink ground with one amber record lamp. Replace it with a real logo and run
+`brand/icon.svg` is the source: a placeholder mark, the app's ink ground with one amber
+record lamp. Everything under `midi_memory/*/static/brand/` is generated from it and
+should not be edited by hand. Replace it with a real logo and run
 
 ```bash
 ./scripts/render_icons.sh
