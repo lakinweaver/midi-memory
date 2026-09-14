@@ -19,7 +19,7 @@ import logging
 import secrets
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from midi_memory.server.db import Database

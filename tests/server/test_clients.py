@@ -9,7 +9,6 @@ from midi_memory.server.db import Database
 from midi_memory.server.main import create_app
 from midi_memory.shared.protocol import Heartbeat
 
-from tests.conftest import FakeClock
 
 
 @pytest.fixture

@@ -10,7 +10,7 @@ import asyncio
 import logging
 import platform
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import httpx

@@ -105,6 +105,9 @@
       }
       if (empty) empty.remove();
 
+      // Drives the narrow-screen rule: see .clients-strip.multi in app.css.
+      strip.classList.toggle('multi', clients.size > 1);
+
       const wanted = new Set();
       for (const client of clients.values()) {
         wanted.add(client.id);

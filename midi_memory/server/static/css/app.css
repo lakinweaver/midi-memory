@@ -570,8 +570,13 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
 /* ------------------------------------------------------------ responsive -- */
 @media (max-width: 880px) {
   .detail-grid { grid-template-columns: 1fr; }
+  /* Narrow: there is room for the lamp and one thing beside it. With a single
+     client that is its state, which is the only interesting thing about it.
+     With several it is the name, since the lamp already carries the state and
+     three readouts all saying "offline" tell you nothing. */
   .clients-strip { gap: 12px; }
-  .clients-strip .who { display: none; }
+  .clients-strip .who { max-width: 9ch; }
+  .clients-strip.multi .val { display: none; }
 }
 @media (max-width: 620px) {
   .page { padding: 20px 14px 70px; }

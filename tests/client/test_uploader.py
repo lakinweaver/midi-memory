@@ -15,7 +15,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from midi_memory.client.midi.recorder import SessionRecord
-from midi_memory.client.spool import Spool
 from midi_memory.client.uploader import Uploader
 from midi_memory.server.config import Settings as ServerSettings
 from midi_memory.server.main import create_app

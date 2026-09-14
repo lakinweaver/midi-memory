@@ -4,10 +4,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from midi_memory.client.midi.recorder import SessionRecord
-from midi_memory.client.spool import Spool
 from midi_memory.shared.protocol import MIDI_FILENAME
 
 
