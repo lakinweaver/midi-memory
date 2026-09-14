@@ -40,7 +40,7 @@ install.
 ### 1. The server
 
 ```bash
-git clone <your-repo-url> midi-memory && cd midi-memory
+git clone https://github.com/lakinweaver/midi-memory/ midi-memory && cd midi-memory
 docker compose up -d
 ```
 
@@ -89,7 +89,7 @@ one click on "New secret".
 ### 3. The client
 
 ```bash
-git clone <your-repo-url> ~/midi-memory && cd ~/midi-memory
+git clone https://github.com/lakinweaver/midi-memory/ ~/midi-memory && cd ~/midi-memory
 ./scripts/install_client_pi.sh
 ```
 
@@ -309,7 +309,9 @@ recovery are verified without waiting in real time or needing a keyboard. The up
 tests run a real client against the real server app over httpx's ASGI transport, so the
 join between the two halves is tested with only the socket replaced.
 
-## Credits
+## Disclosure and Credits 
+
+This project is 100% vibe coded with Claude Code! While I am familiar with the web stack I asked Claude to use, I have made no effort to audit the code. This app fills a need for me, and I'm making the repo public in case it does for you, too.
 
 Piano samples are the [Salamander Grand Piano](https://archive.org/details/SalamanderGrandPianoV3)
 by Alexander Holm, licensed **CC BY 3.0**, as redistributed by the Tone.js project.
