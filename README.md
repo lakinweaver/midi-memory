@@ -15,26 +15,22 @@ It comes in two parts:
 | **Server** | Anything with Docker | The library: browse, search, play back, download. Registers clients and receives their recordings. |
 | **Client** | A Pi beside the instrument | Records. Spools takes locally and uploads them. One settings page is its entire UI. |
 
-They are separate because they want different machines. Capture has to be cheap,
-headless and within a cable's reach of the piano; the library wants to live on
-something you actually back up. Splitting them also means the Pi keeps recording
-when the server is down, and a second piano is a second Pi rather than a second
-install.
+Using this system, you can deploy multiple clients to as many keyboards as you want. Your ideas are sent to a central library server where they can be easily backed up. Clients continue recording even when they cannot access the server.
 
-## What it does
+## What the client does
 
 - **Records continuously** from a USB MIDI keyboard, with no interaction.
 - **Splits takes automatically** after a configurable silence (default 45s).
-- **Never cuts a held chord** — a session stays open while keys or the sustain pedal are down.
-- **Ignores accidental key brushes** — takes under 4 notes or 2 seconds are discarded.
-- **Survives power cuts** — every note is flushed to disk as it is played, and an
-  interrupted session is finalised on the next start.
-- **Survives the server being down** — takes wait in a local spool and go up, in the
-  order they were played, as soon as it is back.
-- **Browse and search** by name, tag, free text, date range, length, starred status,
-  and which client recorded it.
-- **Play back in the browser** with a piano roll, a sampled piano, loop and speed control.
-- **Download** any session as a standard `.mid` file.
+- **Ignores accidental key brushes** — by default, takes under 4 notes or 2 seconds are discarded.
+- **Survives power cuts** — every note is flushed to the client's disk as it is played, and an
+  interrupted session is finalized on the next start.
+- **Survives the server being down** — your ideas wait in a local spool and are uploaded to the server as soon as it is available.
+
+## What the server does
+- **Browse and search** your ideas ("sessions") by name, tag, free text, date range, length, starred status,
+  and which client device it was recorded on.
+- **Plays back ideas in the browser** with a piano roll and a sampled piano voice, with loop and speed control.
+- **Allows downloads** of any session as a standard `.mid` file.
 
 ## Setting it up
 
@@ -59,9 +55,7 @@ Synology, unRAID, QNAP — that directory belongs to a real user there, with ACL
 and a container running as some invented uid cannot write to it. That is what `PUID` and
 `PGID` are for.
 
-`docker-compose.yml` defaults them to **1030** and **100**, the docker user on the
-Synology this is deployed to, so on that box there is nothing to set. On any other
-machine, put its own ids in a `.env` beside `docker-compose.yml` (see `.env.example`),
+`docker-compose.yml` defaults them to **1030** and **100**, which may not be correct for your setup. You can add the ids for your docker user in a `.env` beside `docker-compose.yml` (see `.env.example`),
 or edit the compose file's `environment:` block, which is easier from Synology's
 Container Manager:
 
@@ -69,21 +63,8 @@ Container Manager:
 id your-user        # e.g. uid=1030(docker) gid=100(users)
 ```
 
-Set either to empty instead and the container adopts whoever already owns `./data`,
+Set either of these to empty and the container should adopt whoever already owns `./data`,
 which works without knowing any of this — it logs which ids it picked on startup.
-
-The container starts as root only long enough to sort out ownership, then drops to those
-ids; nothing but the entrypoint runs as root. Where the ids already match it does not
-touch ownership at all, which matters on network shares, where `chown` is often refused
-outright — and a refusal warns and carries on rather than killing the container.
-
-If it still cannot write, the server says who owns the directory and who it is running
-as, rather than a bare traceback:
-
-```
-Cannot write to the data directory /data/sessions: /data belongs to uid 1026:gid 100
-and this is running as uid 10001:gid 10001 (midimemory).
-```
 
 **After pulling a new version, rebuild.** `docker compose up -d` on its own reuses the
 image you already have, so changes to the Dockerfile or the entrypoint are not picked up:
@@ -114,15 +95,6 @@ Then open the address it prints — `http://<pi>:8081` — and paste in the serv
 and the secret. That is the only configuration either half needs; everything else has a
 working default.
 
-The client's page has its own password, generated on the first install and printed once.
-If you have lost it, or re-ran the installer and never saw it, it is in `.env`:
-
-```bash
-grep MIDI_MEMORY_PASSWORD ~/midi-memory/.env
-```
-
-Change it there and `sudo systemctl restart midi-memory-client`.
-
 **Run it as yourself, not with `sudo`.** The script calls `sudo` for the handful of
 steps that need it (apt, systemd, `/var/lib`). Running the whole thing as root creates
 the virtualenv and `.env` owned by root inside your home directory, and the service —
@@ -132,12 +104,20 @@ and repairs the ownership on the next run.
 If the install fails partway — flaky Pi wifi timing out against apt or PyPI is the usual
 cause — just re-run it. It is idempotent and resumes.
 
+#### Client password details
+The client's page has its own password, generated on the first install and printed once.
+To find it again:
+
+```bash
+grep MIDI_MEMORY_PASSWORD ~/midi-memory/.env
+```
+
+Change it there if needed and `sudo systemctl restart midi-memory-client`.
+
 ### Upgrading an existing single-box install
 
 The server keeps the old data directory layout exactly, so point it at your existing
-`data/` and the whole library is there. The database gains one nullable column;
-recordings made before the split simply have no client to show, which is invisible
-until you have more than one client anyway.
+`data/` and the whole library is there.
 
 ## Updating an install
 
@@ -183,19 +163,6 @@ git pull
 
 It is idempotent: it keeps your `.env`, reinstalls dependencies, and restarts the service.
 
-### Which half needs it
-
-Most changes touch one side only. After pulling, this says which:
-
-```bash
-git diff --name-only HEAD@{1} HEAD
-```
-
-`midi_memory/server/` or `docker/` means rebuild the server; `midi_memory/client/` or
-`scripts/` means update the Pi; `midi_memory/shared/` means both. There is no need to keep
-them in lockstep — the client spools through a server outage, so updating one and getting
-to the other later loses nothing.
-
 ## Development, on any machine
 
 ```bash
@@ -232,8 +199,7 @@ To fill the library without a client at all:
 ## Configuration
 
 Everything is set through environment variables or `.env` — see `.env.server.example`
-and `.env.client.example`. Both halves answer to `MIDI_MEMORY_*`: on a real install they
-are different machines with a `.env` each, and there is nothing to confuse.
+and `.env.client.example`. All live variables can be placed in `.env`.
 
 **Server**
 
@@ -361,28 +327,10 @@ command line. Either is safe to re-run — files already present are skipped.
 Capture clients do not get them at all. They have no player, so that is two megabytes
 and one flaky-network step the Pi install does not need.
 
-### Why the library is one request
-
-Each row shows a pitch strip: a thumbnail of what was played. Building those from the
-full note lists meant one HTTP request per visible row — 41 requests and about 70 KB to
-draw a page of 40, which browsers serialise into several waves.
-
-Instead a compact fingerprint is computed once, on the client, when the session is
-finalised — the loudest note from each of 64 time buckets, quantised to bytes — uploaded
-with the take, and sent inline with the listing. One request, about 18 KB. Client names
-ride along the same way, joined into the query rather than fetched per row.
-
-### Sustain pedal
-
-Each note carries two lifetimes: how long the **key was held**, and how long it
-**actually rang** once the pedal is accounted for. The piano roll draws the first, so a
-heavily pedalled passage stays readable; playback uses the second, so it sounds like what
-you played.
-
 ## Security
 
 This is built for your own network: one password on the library, a signed cookie, a
-per-client bearer secret, and plain HTTP. That is proportionate to a home router — but it
+per-client bearer secret, and plain HTTP. That is proportionate to a home network — but it
 is **not** enough to expose to the internet. If you need that, put it behind a reverse
 proxy with TLS and real authentication.
 
@@ -412,7 +360,7 @@ join between the two halves is tested with only the socket replaced.
 
 ## Disclosure and Credits 
 
-This project is 100% vibe coded with Claude Code! While I am familiar with the web stack I asked Claude to use, I have made no effort to audit the code. This app fills a need for me, and I'm making the repo public in case it does for you, too.
+This project is 90% "vibe-coded" with Claude Code. My feelings on AI are mixed, but the ability to _quickly_ deploy a problem-solving app like this one is too useful for me to discount. While I am familiar with the web stack I asked Claude to use and have written similar projects by hand in the past, I have made no effort to audit the code. **This app simply fills a need for me, and I'm making the repo public in case it does for you, too.**
 
 Piano samples are the [Salamander Grand Piano](https://archive.org/details/SalamanderGrandPianoV3)
 by Alexander Holm, licensed **CC BY 3.0**, as redistributed by the Tone.js project.
