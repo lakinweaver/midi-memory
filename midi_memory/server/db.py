@@ -9,7 +9,7 @@ import json
 import shutil
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional, Sequence
 
@@ -73,8 +73,13 @@ SORT_COLUMNS = {
 
 
 class Database:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, zone: Optional[tzinfo] = None) -> None:
         self.path = path
+        # Stored times are UTC throughout. The zone is only for the two places a
+        # time has to be turned into something a person reads before it reaches
+        # the browser: the default session name and the date filter's day
+        # boundaries. See Settings.zone for why None is not the same as UTC.
+        self.zone = zone
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
@@ -133,7 +138,7 @@ class Database:
                     _iso(record.started_at),
                     _iso(record.ended_at),
                     record.duration_ms,
-                    name or default_session_name(record.started_at),
+                    name or default_session_name(record.started_at, self.zone),
                     record.event_count,
                     record.note_count,
                     record.lowest_note,
@@ -398,10 +403,10 @@ class Database:
 
         if date_from:
             where.append("sessions.started_at >= ?")
-            params.append(_day_bound(date_from, end=False))
+            params.append(_day_bound(date_from, end=False, zone=self.zone))
         if date_to:
             where.append("sessions.started_at <= ?")
-            params.append(_day_bound(date_to, end=True))
+            params.append(_day_bound(date_to, end=True, zone=self.zone))
         if min_duration_ms is not None:
             where.append("sessions.duration_ms >= ?")
             params.append(min_duration_ms)
@@ -498,12 +503,14 @@ def _client_row(row) -> Optional[dict]:
 
 
 
-def _day_bound(value: str, end: bool) -> str:
+def _day_bound(value: str, end: bool, zone: Optional[tzinfo] = None) -> str:
     """Turn a bare YYYY-MM-DD from a date picker into a UTC timestamp.
 
-    The picker gives the user's local calendar day, but timestamps are stored in
-    UTC. Without this conversion a late-evening session west of Greenwich is
-    filed under the next day and vanishes from the day you actually played it.
+    The picker gives a calendar day in the library's zone, but timestamps are
+    stored in UTC. Without this conversion a late-evening session west of
+    Greenwich is filed under the next day and vanishes from the day you actually
+    played it -- and with the wrong zone it is off by the same offset, which is
+    the failure this argument exists to prevent.
     """
     if "T" in value:
         return value
@@ -513,7 +520,10 @@ def _day_bound(value: str, end: bool) -> str:
         return value
     if end:
         day = day.replace(hour=23, minute=59, second=59, microsecond=999_999)
-    # A naive datetime is assumed to be local time by astimezone().
+    # Stamping the zone on beats astimezone()'s naive-means-local guess, which
+    # would mean the server process rather than the library.
+    if zone is not None:
+        day = day.replace(tzinfo=zone)
     return day.astimezone(timezone.utc).isoformat()
 
 
@@ -545,7 +555,13 @@ def _clean_tag_names(names: Iterable[str]) -> list[str]:
     return list(seen.values())
 
 
-def default_session_name(started_at: datetime) -> str:
-    """Human, sortable, and immediately meaningful: 'Sep 13 - 2:47 PM'."""
-    local = started_at.astimezone()
+def default_session_name(started_at: datetime, zone: Optional[tzinfo] = None) -> str:
+    """Human, sortable, and immediately meaningful: 'Sep 13 - 2:47 PM'.
+
+    This is the one label the server bakes in rather than leaving to the browser,
+    because it is written once at ingest with nobody's browser in the loop. So it
+    needs telling what local means: unset, a container follows TZ, which is UTC,
+    and every name lands hours away from the timestamp shown beside it.
+    """
+    local = started_at.astimezone(zone)
     return local.strftime("%b %-d, %-I:%M %p")

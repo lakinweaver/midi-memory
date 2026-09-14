@@ -23,6 +23,7 @@ def _payload(request: Request) -> dict:
             "port": s.port,
             "data_dir": str(s.data_dir),
             "auth_enabled": s.auth_enabled,
+            "timezone": s.timezone_label,
         },
         "samples": samples.status(),
         "clients": request.app.state.clients.listing(),

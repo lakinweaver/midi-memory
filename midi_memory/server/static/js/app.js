@@ -187,7 +187,7 @@
 
     const READ_ONLY_LABELS = {
       port: 'Port', host: 'Bind address', data_dir: 'Data directory',
-      auth_enabled: 'Password set',
+      auth_enabled: 'Password set', timezone: 'Timezone',
     };
 
     function fill(payload) {

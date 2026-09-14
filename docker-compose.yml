@@ -24,6 +24,13 @@ services:
       # ./data instead, which suits a machine whose uid you do not know.
       PUID: "${PUID:-1030}"
       PGID: "${PGID:-100}"
+      # The zone the server names new sessions in. Every other time in the UI
+      # is formatted by the browser and is already right; a session's name is
+      # the one the server writes itself, at upload, with no browser involved.
+      # Left unset a container is UTC, and every name lands hours away from the
+      # timestamp beside it. MIDI_MEMORY_TIMEZONE overrides this if some other
+      # part of the stack needs TZ to stay as it is.
+      TZ: "${TZ:-America/New_York}"
       # Set a password to put the library behind a login. Left empty, anyone on
       # the network can open it -- which is often what you want at home, and
       # never what you want if this is reachable from outside it.

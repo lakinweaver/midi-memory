@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     rng = random.Random(args.seed)
     settings = get_settings()
     settings.ensure_dirs()
-    db = Database(settings.db_path)
+    db = Database(settings.db_path, settings.zone)
 
     # Demo takes are attributed to a client of their own, so the per-client parts
     # of the library have something real to show. It gets no secret: nothing is

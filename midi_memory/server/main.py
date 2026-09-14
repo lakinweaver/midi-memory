@@ -66,7 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.settings = settings
         samples.ensure_manifest()
-        app.state.db = Database(settings.db_path)
+        app.state.db = Database(settings.db_path, settings.zone)
         app.state.bus = EventBus()
         app.state.auth = Auth(
             password=settings.password,

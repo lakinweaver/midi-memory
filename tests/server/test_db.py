@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from midi_memory.server.db import Database, default_session_name
+from midi_memory.server.config import Settings
+from midi_memory.server.db import Database, _day_bound, default_session_name
 from midi_memory.shared.protocol import SessionUpload
 
 
@@ -40,9 +42,51 @@ def test_insert_and_read_back(db):
 
 
 def test_default_name_is_human_readable():
-    name = default_session_name(datetime(2026, 9, 13, 14, 47, tzinfo=timezone.utc))
-    assert "Sep 13" in name
-    assert ("PM" in name or "AM" in name)
+    name = default_session_name(datetime(2026, 9, 13, 14, 47, tzinfo=timezone.utc),
+                                timezone.utc)
+    assert name == "Sep 13, 2:47 PM"
+
+
+def test_default_name_uses_the_configured_zone():
+    """The name is the one time the server formats itself, so it must be told
+    what local means -- unset, a container is UTC and every name lands hours
+    away from the timestamp the browser renders beside it."""
+    started = datetime(2026, 9, 14, 1, 30, tzinfo=timezone.utc)
+    assert default_session_name(started, ZoneInfo("America/New_York")) == "Sep 13, 9:30 PM"
+    assert default_session_name(started, ZoneInfo("Europe/Berlin")) == "Sep 14, 3:30 AM"
+
+
+def test_day_bound_reads_the_picker_in_the_configured_zone():
+    """A bare YYYY-MM-DD out of <input type=date> is a calendar day in the
+    library's zone, not the server process's."""
+    zone = ZoneInfo("America/New_York")
+    assert _day_bound("2026-09-13", end=False, zone=zone).startswith("2026-09-13T04:00")
+    assert _day_bound("2026-09-13", end=True, zone=zone).startswith("2026-09-14T03:59")
+    # Already a full timestamp: nothing to interpret, so nothing is done to it.
+    assert _day_bound("2026-09-13T12:00:00+00:00", end=False, zone=zone) \
+        == "2026-09-13T12:00:00+00:00"
+
+
+def test_sessions_are_named_in_the_configured_zone(tmp_path):
+    db = Database(tmp_path / "zoned.db", ZoneInfo("Europe/Berlin"))
+    record = make_record(1)
+    record.started_at = datetime(2026, 9, 14, 1, 30, tzinfo=timezone.utc)
+    db.insert_session(record)
+    assert db.get_session(record.id)["name"] == "Sep 14, 3:30 AM"
+
+
+def test_unknown_zone_falls_back_rather_than_failing():
+    """A typo should not stop the library serving; Settings shows what took
+    effect instead."""
+    s = Settings(_env_file=None, timezone="Mars/Olympus_Mons")
+    assert s.zone is None
+    assert "not found" in s.timezone_label
+
+
+def test_zone_label_is_the_configured_name():
+    s = Settings(_env_file=None, timezone="Europe/Berlin")
+    assert s.zone == ZoneInfo("Europe/Berlin")
+    assert s.timezone_label == "Europe/Berlin"
 
 
 def test_rename_and_favourite(db):

@@ -222,6 +222,8 @@ and `.env.client.example`. All live variables can be placed in `.env`.
 | `MIDI_MEMORY_PASSWORD` | *(empty)* | Password for the library. Empty disables the login. |
 | `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
 | `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
+| `MIDI_MEMORY_TIMEZONE` | *(empty)* | Zone new sessions are named in, as `Area/City`. Empty follows `TZ`. |
+| `TZ` | `America/New_York` | Docker only: the container's zone, which is what `MIDI_MEMORY_TIMEZONE` falls back to. |
 | `PUID` / `PGID` | `1030` / `100` | Docker only: who the server runs as. Empty adopts the owner of the mounted directory. |
 
 **Client**

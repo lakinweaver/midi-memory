@@ -18,9 +18,11 @@ FROM python:3.13-slim
 LABEL org.opencontainers.image.title="MIDI Memory" \
       org.opencontainers.image.description="Always-on MIDI notepad: the library server."
 
-# curl for the healthcheck; gosu to drop privileges in the entrypoint.
+# curl for the healthcheck; gosu to drop privileges in the entrypoint; tzdata
+# because TZ names nothing without it, and a container with no zone database
+# silently stays on UTC however it is configured.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl gosu \
+ && apt-get install -y --no-install-recommends curl gosu tzdata \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /dist/*.whl /tmp/
