@@ -69,9 +69,14 @@
         <div class="client-list" id="client-list"></div>
 
         <div class="new-client">
-          <input type="text" id="new-client-name" maxlength="40"
-                 placeholder="Name this client, e.g. Upright piano" autocomplete="off">
-          <button class="btn" type="button" id="add-client">Add client</button>
+          <label class="new-client-label" for="new-client-name">Add a client</label>
+          <div class="input-group">
+            <input type="text" id="new-client-name" maxlength="40"
+                   placeholder="e.g. Upright piano" autocomplete="off">
+            <button class="btn primary" type="button" id="add-client">Add</button>
+          </div>
+          <span class="hint">Name it after the instrument it will be listening to.
+            You will get a secret to paste into that machine.</span>
         </div>
 
         <div class="secret-reveal" id="secret-reveal" hidden>

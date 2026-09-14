@@ -519,7 +519,7 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
   margin: -4px 0 14px; max-width: 52ch;
 }
 .client-list { display: grid; gap: 8px; margin-bottom: 14px; }
-.client-list .hint.empty { color: var(--muted); font-size: 12px; margin: 0; }
+.client-empty { color: var(--muted); font-size: 12px; margin: 0; }
 
 .client-row {
   display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px;
@@ -532,8 +532,38 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
 .client-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .client-actions .btn { font-size: 11px; padding: 5px 9px; }
 
-.new-client { display: flex; gap: 8px; }
-.new-client input { flex: 1; }
+/* The field and the button are one control, sharing a border, so it reads as
+   "type here, then press that" rather than as two unrelated things. The input
+   previously inherited nothing -- it sits outside .row-field -- and rendered as
+   a browser default, which against this sheet looked like floating text with no
+   field at all. */
+.new-client { margin-top: 2px; }
+.new-client-label {
+  display: block; font-size: 13px; color: var(--cream); margin-bottom: 7px;
+}
+.new-client .hint {
+  display: block; margin-top: 7px; font-size: 11px; line-height: 1.6;
+  color: var(--muted);
+}
+
+.input-group {
+  display: flex; align-items: stretch;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-md); overflow: hidden;
+  transition: border-color .15s var(--ease);
+}
+.input-group:focus-within { border-color: var(--amber-deep); }
+.input-group input {
+  flex: 1; min-width: 0;
+  background: transparent; border: 0; color: var(--cream);
+  height: 36px; padding: 0 12px; font: inherit; font-size: 13px;
+}
+.input-group input:focus { outline: none; }
+.input-group input::placeholder { color: var(--faint); }
+.input-group .btn {
+  flex: none; border: 0; border-left: 1px solid var(--line);
+  border-radius: 0; height: auto; padding: 0 18px;
+}
 
 /* The secret is shown exactly once, so it gets to be loud about it. */
 .secret-reveal {
@@ -543,7 +573,10 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
   display: grid; gap: 9px;
 }
 .secret-head b { color: var(--amber); font-weight: 500; font-size: 13px; }
-.secret-head span { display: block; color: var(--cream-dim); font-size: 12px; margin-top: 3px; }
+/* Direct child only: the name sits in a <span> inside the <b>, and a descendant
+   selector pushed it onto its own line, so the heading read "Secret for" and
+   then the client's name underneath it. */
+.secret-head > span { display: block; color: var(--cream-dim); font-size: 12px; margin-top: 3px; }
 .secret-value {
   display: block; background: var(--ink); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 10px 12px;

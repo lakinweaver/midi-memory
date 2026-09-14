@@ -224,9 +224,10 @@
 
     function fillClients(list) {
       if (!list || !list.length) {
+        // Not `.empty`: that is the library's full-page empty state, and it
+        // carries 80px of padding that has no business in a settings panel.
         f.clientList.innerHTML =
-          '<p class="hint empty">No clients yet. Add one here, then paste its '
-          + 'secret into the client\'s own settings page.</p>';
+          '<p class="client-empty">No capture clients registered yet.</p>';
         return;
       }
       f.clientList.innerHTML = list.map((client) => {
