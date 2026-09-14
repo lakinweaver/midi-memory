@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from midi_memory.server.main import create_app
 from midi_memory.shared.midi.events import MidiEvent
-from midi_memory.client.midi.recorder import SessionRecord
+from midi_memory.shared.protocol import SessionUpload
 from midi_memory.shared.midi.smf import write_smf
 
 
@@ -28,12 +28,12 @@ def seed(client: TestClient, session_id: str, name: str, *, days_ago: int = 0,
 
     started = datetime.now(timezone.utc) - timedelta(days=days_ago)
     app.state.db.insert_session(
-        SessionRecord(
+        SessionUpload(
             id=session_id, started_at=started,
             ended_at=started + timedelta(seconds=notes * 0.5),
             duration_ms=int(notes * 500), event_count=notes * 2, note_count=notes,
             lowest_note=60, highest_note=60 + notes - 1, avg_velocity=83.0,
-            device_name="Test Piano", directory=directory,
+            device_name="Test Piano",
         ),
         name=name,
     )
@@ -71,81 +71,81 @@ def test_library_page_renders(client):
 
 # -- search ------------------------------------------------------------------
 def test_search_filters_and_sorts(client):
-    seed(client, "aaa", "Waltz in C", days_ago=0, notes=6)
-    seed(client, "bbb", "Late night blues", days_ago=9, notes=12, favorite=True)
+    seed(client, "aaaaaaaaaaaaaaaa", "Waltz in C", days_ago=0, notes=6)
+    seed(client, "bbbbbbbbbbbbbbbb", "Late night blues", days_ago=9, notes=12, favorite=True)
 
     assert client.get("/api/sessions").json()["total"] == 2
-    assert [s["id"] for s in client.get("/api/sessions?q=waltz").json()["items"]] == ["aaa"]
-    assert [s["id"] for s in client.get("/api/sessions?favorite=true").json()["items"]] == ["bbb"]
+    assert [s["id"] for s in client.get("/api/sessions?q=waltz").json()["items"]] == ["aaaaaaaaaaaaaaaa"]
+    assert [s["id"] for s in client.get("/api/sessions?favorite=true").json()["items"]] == ["bbbbbbbbbbbbbbbb"]
 
     longest = client.get("/api/sessions?sort=duration&order=desc").json()["items"]
-    assert longest[0]["id"] == "bbb"
+    assert longest[0]["id"] == "bbbbbbbbbbbbbbbb"
 
 
 def test_search_by_tag(client):
-    seed(client, "aaa", "One")
-    seed(client, "bbb", "Two")
-    client.put("/api/sessions/aaa/tags", json={"tags": ["ballad", "jazz"]})
-    client.put("/api/sessions/bbb/tags", json={"tags": ["jazz"]})
+    seed(client, "aaaaaaaaaaaaaaaa", "One")
+    seed(client, "bbbbbbbbbbbbbbbb", "Two")
+    client.put("/api/sessions/aaaaaaaaaaaaaaaa/tags", json={"tags": ["ballad", "jazz"]})
+    client.put("/api/sessions/bbbbbbbbbbbbbbbb/tags", json={"tags": ["jazz"]})
 
     assert client.get("/api/sessions?tag=jazz").json()["total"] == 2
     both = client.get("/api/sessions?tag=jazz&tag=ballad").json()
-    assert [s["id"] for s in both["items"]] == ["aaa"]
+    assert [s["id"] for s in both["items"]] == ["aaaaaaaaaaaaaaaa"]
 
 
 def test_pagination(client):
     for i in range(5):
-        seed(client, f"s{i}", f"Take {i}")
+        seed(client, f"session{i:011d}", f"Take {i}")
     page = client.get("/api/sessions?limit=2").json()
     assert len(page["items"]) == 2 and page["total"] == 5 and page["has_more"] is True
 
 
 # -- editing -----------------------------------------------------------------
 def test_rename_star_and_annotate(client):
-    seed(client, "aaa", "Untitled")
+    seed(client, "aaaaaaaaaaaaaaaa", "Untitled")
 
-    renamed = client.patch("/api/sessions/aaa", json={"name": "  Nocturne  "}).json()
+    renamed = client.patch("/api/sessions/aaaaaaaaaaaaaaaa", json={"name": "  Nocturne  "}).json()
     assert renamed["name"] == "Nocturne"
 
-    starred = client.patch("/api/sessions/aaa", json={"favorite": True}).json()
+    starred = client.patch("/api/sessions/aaaaaaaaaaaaaaaa", json={"favorite": True}).json()
     assert starred["favorite"] is True
 
-    noted = client.patch("/api/sessions/aaa", json={"notes": "revisit the bridge"}).json()
+    noted = client.patch("/api/sessions/aaaaaaaaaaaaaaaa", json={"notes": "revisit the bridge"}).json()
     assert noted["notes"] == "revisit the bridge"
 
 
 def test_blank_name_falls_back_rather_than_saving_empty(client):
-    seed(client, "aaa", "Something")
-    assert client.patch("/api/sessions/aaa", json={"name": "   "}).json()["name"] == "Untitled"
+    seed(client, "aaaaaaaaaaaaaaaa", "Something")
+    assert client.patch("/api/sessions/aaaaaaaaaaaaaaaa", json={"name": "   "}).json()["name"] == "Untitled"
 
 
 def test_add_and_remove_tags(client):
-    seed(client, "aaa", "One")
+    seed(client, "aaaaaaaaaaaaaaaa", "One")
 
-    added = client.post("/api/sessions/aaa/tags", json={"tag": "sketch"}).json()
+    added = client.post("/api/sessions/aaaaaaaaaaaaaaaa/tags", json={"tag": "sketch"}).json()
     assert added["tags"] == ["sketch"]
 
-    client.post("/api/sessions/aaa/tags", json={"tag": "minor"})
-    removed = client.delete("/api/sessions/aaa/tags/sketch").json()
+    client.post("/api/sessions/aaaaaaaaaaaaaaaa/tags", json={"tag": "minor"})
+    removed = client.delete("/api/sessions/aaaaaaaaaaaaaaaa/tags/sketch").json()
     assert removed["tags"] == ["minor"]
 
     assert [t["name"] for t in client.get("/api/tags").json()["tags"]] == ["minor"]
 
 
 def test_rename_tag_across_sessions(client):
-    seed(client, "aaa", "One"); seed(client, "bbb", "Two")
-    client.put("/api/sessions/aaa/tags", json={"tags": ["wip"]})
-    client.put("/api/sessions/bbb/tags", json={"tags": ["wip"]})
+    seed(client, "aaaaaaaaaaaaaaaa", "One"); seed(client, "bbbbbbbbbbbbbbbb", "Two")
+    client.put("/api/sessions/aaaaaaaaaaaaaaaa/tags", json={"tags": ["wip"]})
+    client.put("/api/sessions/bbbbbbbbbbbbbbbb/tags", json={"tags": ["wip"]})
 
     client.patch("/api/tags/wip", json={"name": "in progress"})
-    assert client.get("/api/sessions/aaa").json()["tags"] == ["in progress"]
+    assert client.get("/api/sessions/aaaaaaaaaaaaaaaa").json()["tags"] == ["in progress"]
     assert client.get("/api/sessions?tag=in progress").json()["total"] == 2
 
 
 # -- playback + download -----------------------------------------------------
 def test_notes_endpoint_feeds_the_player(client):
-    seed(client, "aaa", "One", notes=6)
-    payload = client.get("/api/sessions/aaa/notes").json()
+    seed(client, "aaaaaaaaaaaaaaaa", "One", notes=6)
+    payload = client.get("/api/sessions/aaaaaaaaaaaaaaaa/notes").json()
 
     assert len(payload["notes"]) == 6
     first = payload["notes"][0]
@@ -154,8 +154,8 @@ def test_notes_endpoint_feeds_the_player(client):
 
 
 def test_download_serves_a_real_midi_file(client):
-    seed(client, "aaa", "Waltz in C")
-    response = client.get("/api/sessions/aaa/download")
+    seed(client, "aaaaaaaaaaaaaaaa", "Waltz in C")
+    response = client.get("/api/sessions/aaaaaaaaaaaaaaaa/download")
 
     assert response.status_code == 200
     assert response.content[:4] == b"MThd", "must be a real Standard MIDI File"
@@ -166,8 +166,8 @@ def test_download_serves_a_real_midi_file(client):
 
 def test_download_filename_is_sanitised(client):
     """Path separators and punctuation must never survive into a filename."""
-    seed(client, "aaa", "and/or: a <sketch>")
-    disposition = client.get("/api/sessions/aaa/download").headers["content-disposition"]
+    seed(client, "aaaaaaaaaaaaaaaa", "and/or: a <sketch>")
+    disposition = client.get("/api/sessions/aaaaaaaaaaaaaaaa/download").headers["content-disposition"]
     name = disposition.split("''")[-1]
     for bad in ("/", "%2F", ":", "<", ">"):
         assert bad not in name, f"{bad!r} leaked into {name!r}"
@@ -175,12 +175,12 @@ def test_download_filename_is_sanitised(client):
 
 
 def test_delete_removes_session_and_files(client):
-    seed(client, "aaa", "One")
-    directory = client.app.state.settings.sessions_dir / "aaa"
+    seed(client, "aaaaaaaaaaaaaaaa", "One")
+    directory = client.app.state.settings.sessions_dir / "aaaaaaaaaaaaaaaa"
     assert directory.exists()
 
-    client.delete("/api/sessions/aaa")
-    assert client.get("/api/sessions/aaa").status_code == 404
+    client.delete("/api/sessions/aaaaaaaaaaaaaaaa")
+    assert client.get("/api/sessions/aaaaaaaaaaaaaaaa").status_code == 404
     assert not directory.exists()
 
 

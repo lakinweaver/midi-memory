@@ -9,7 +9,9 @@ import logging
 import shutil
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile,
+)
 from pydantic import ValidationError
 
 from midi_memory.shared.protocol import (
@@ -64,11 +66,12 @@ async def heartbeat(request: Request, client: Client, beat: Heartbeat) -> dict:
 @router.post("/sessions")
 async def upload_session(
     request: Request,
+    response: Response,
     client: Client,
     metadata: Annotated[str, Form()],
     midi: Annotated[UploadFile, File()],
     events: Annotated[Optional[UploadFile], File()] = None,
-):
+) -> UploadResult:
     try:
         payload = SessionUpload.model_validate_json(metadata)
     except ValidationError as exc:
@@ -109,6 +112,7 @@ async def upload_session(
     log.info("Stored session %s from %s (%d notes)",
              payload.id, client["name"], payload.note_count)
     request.app.state.bus.publish("session_saved", session=session)
+    response.status_code = 201
     return UploadResult(id=payload.id, status="stored")
 
 
