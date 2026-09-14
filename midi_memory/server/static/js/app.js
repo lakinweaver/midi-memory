@@ -74,32 +74,75 @@
 
   /* ------------------------------------------------------ the live console -- */
   // One EventSource per tab, re-dispatched as DOM events so pages can listen.
+  // The header shows one readout per capture client; with a single client -- the
+  // usual case -- it reads like the single device panel it replaced.
+  const clients = new Map();
+
   function startConsole() {
-    const lampDevice = document.getElementById('lamp-device');
-    const lampRec = document.getElementById('lamp-rec');
-    const deviceName = document.getElementById('device-name');
-    const recState = document.getElementById('rec-state');
-    if (!lampDevice) return;
+    const strip = document.getElementById('clients-strip');
+    if (!strip) return;
 
     let source = null;
     let retry = 1000;
     let wasDropped = false;
 
-    function paintDevice(connected, name) {
-      lampDevice.classList.toggle('on', !!connected);
-      deviceName.textContent = connected ? (name || 'connected') : 'no keyboard';
-      deviceName.title = name || '';
+    function label(client) {
+      if (client.state === 'offline') return 'offline';
+      if (client.state === 'recording') {
+        // The count is for the session in progress, so it holds steady once you
+        // stop playing -- the label is what makes that read as a tally, not a timer.
+        const n = Number(client.note_count) || 0;
+        return n ? 'recording · ' + n + (n === 1 ? ' note' : ' notes') : 'recording';
+      }
+      return client.connected ? 'idle' : 'no keyboard';
     }
 
-    function paintRecording(recording, noteCount) {
-      lampRec.classList.toggle('rec', !!recording);
-      if (!recording) { recState.textContent = 'idle'; return; }
-      // The count is for the session in progress, so it holds steady once you
-      // stop playing -- the label is what makes that read as a tally, not a timer.
-      const n = Number(noteCount) || 0;
-      recState.textContent = n
-        ? 'recording · ' + n + (n === 1 ? ' note' : ' notes')
-        : 'recording';
+    function paint() {
+      const empty = document.getElementById('clients-empty');
+      if (clients.size === 0) {
+        strip.innerHTML = '<span class="readout muted" id="clients-empty">no capture clients</span>';
+        return;
+      }
+      if (empty) empty.remove();
+
+      const wanted = new Set();
+      for (const client of clients.values()) {
+        wanted.add(client.id);
+        let node = strip.querySelector('[data-client="' + CSS.escape(client.id) + '"]');
+        if (!node) {
+          node = document.createElement('div');
+          node.className = 'readout client';
+          node.dataset.client = client.id;
+          node.innerHTML = '<span class="lamp"></span><span class="who"></span>'
+                         + '<span class="val"></span>';
+          strip.appendChild(node);
+        }
+        const lamp = node.querySelector('.lamp');
+        lamp.className = 'lamp'
+          + (client.state === 'recording' ? ' rec'
+             : client.state === 'offline' ? '' : (client.connected ? ' on' : ''));
+        // With one client its name is noise; with several it is the whole point.
+        const who = node.querySelector('.who');
+        who.textContent = client.name;
+        who.hidden = clients.size < 2;
+        node.querySelector('.val').textContent = label(client);
+        node.title = client.name + (client.port_name ? ' — ' + client.port_name : '');
+      }
+      strip.querySelectorAll('[data-client]').forEach((node) => {
+        if (!wanted.has(node.dataset.client)) node.remove();
+      });
+    }
+
+    function replaceAll(list) {
+      clients.clear();
+      (list || []).forEach((c) => clients.set(c.id, c));
+      paint();
+    }
+
+    function update(msg) {
+      const existing = clients.get(msg.client_id) || { id: msg.client_id };
+      clients.set(msg.client_id, Object.assign(existing, msg, { id: msg.client_id }));
+      paint();
     }
 
     function connect() {
@@ -119,34 +162,18 @@
         let msg;
         try { msg = JSON.parse(e.data); } catch (_) { return; }
 
-        switch (msg.type) {
-          case 'status':
-            paintDevice(msg.connected, msg.port_name);
-            paintRecording(msg.recording, msg.current_note_count);
-            break;
-          case 'device_status':
-            paintDevice(msg.connected, msg.port_name);
-            break;
-          case 'session_started':
-            paintRecording(true, 0);
-            break;
-          case 'activity':
-            paintRecording(true, msg.note_count);
-            break;
-          case 'session_saved':
-            paintRecording(false, 0);
-            break;
-        }
+        if (msg.type === 'status') replaceAll(msg.clients);
+        else if (msg.type === 'client_status') update(msg);
+
         document.dispatchEvent(new CustomEvent('midi:' + msg.type, { detail: msg }));
       };
 
       source.onerror = () => {
         wasDropped = true;
         source.close();
-        lampDevice.classList.remove('on');
-        lampRec.classList.remove('rec');
-        deviceName.textContent = 'reconnecting…';
-        // Back off so a Pi that is rebooting isn't hammered.
+        strip.querySelectorAll('.lamp').forEach((l) => { l.className = 'lamp'; });
+        strip.querySelectorAll('.val').forEach((v) => { v.textContent = 'reconnecting…'; });
+        // Back off so a server that is restarting isn't hammered.
         retry = Math.min(retry * 2, 15000);
         setTimeout(connect, retry);
       };
@@ -162,39 +189,32 @@
     if (!dialog || !openBtn) return;
 
     const f = {
-      idle: document.getElementById('set-idle'),
-      minNotes: document.getElementById('set-min-notes'),
-      minSeconds: document.getElementById('set-min-seconds'),
-      device: document.getElementById('set-device'),
       readonly: document.getElementById('set-readonly'),
       sampleStatus: document.getElementById('sample-status'),
       sampleDownload: document.getElementById('sample-download'),
-      save: document.getElementById('settings-save'),
-      reset: document.getElementById('settings-reset'),
+      clientList: document.getElementById('client-list'),
+      newName: document.getElementById('new-client-name'),
+      addClient: document.getElementById('add-client'),
+      reveal: document.getElementById('secret-reveal'),
+      revealFor: document.getElementById('secret-for'),
+      revealValue: document.getElementById('secret-value'),
+      revealCopy: document.getElementById('secret-copy'),
     };
 
     const READ_ONLY_LABELS = {
       port: 'Port', host: 'Bind address', data_dir: 'Data directory',
-      midi_source: 'Input backend', auth_enabled: 'Password set',
+      auth_enabled: 'Password set',
     };
 
     function fill(payload) {
-      const s = payload.settings;
-      f.idle.value = s.idle_seconds;
-      f.minNotes.value = s.min_notes;
-      f.minSeconds.value = s.min_seconds;
-      f.device.value = s.device_match || '';
-
       const rows = Object.entries(READ_ONLY_LABELS).map(([key, label]) => {
         let value = payload.read_only[key];
         if (typeof value === 'boolean') value = value ? 'yes' : 'no';
         return '<dt>' + label + '</dt><dd>' + escapeHtml(value) + '</dd>';
       });
-      // What is actually plugged in matters more than what was configured.
-      const input = payload.input.connected ? payload.input.port_name : 'not connected';
-      rows.push('<dt>Keyboard</dt><dd>' + escapeHtml(input) + '</dd>');
       f.readonly.innerHTML = rows.join('');
       fillSamples(payload.samples);
+      fillClients(payload.clients);
     }
 
     function fillSamples(state) {
@@ -208,6 +228,99 @@
             : 'not installed — using the built-in tone');
       f.sampleDownload.hidden = complete;
       f.sampleDownload.textContent = state.installed ? 'Finish downloading' : 'Download';
+    }
+
+    function stateLabel(client) {
+      if (client.revoked) return 'revoked';
+      if (client.state === 'recording') return 'recording';
+      if (client.state === 'offline') return 'not reporting';
+      return client.connected ? 'idle' : 'idle · no keyboard';
+    }
+
+    function fillClients(list) {
+      if (!list || !list.length) {
+        f.clientList.innerHTML =
+          '<p class="hint empty">No clients yet. Add one here, then paste its '
+          + 'secret into the client\'s own settings page.</p>';
+        return;
+      }
+      f.clientList.innerHTML = list.map((client) => {
+        const lamp = client.revoked ? '' :
+          (client.state === 'recording' ? ' rec' : client.state === 'offline' ? '' : ' on');
+        const count = client.session_count || 0;
+        return '<div class="client-row' + (client.revoked ? ' revoked' : '') + '"'
+             + ' data-id="' + escapeHtml(client.id) + '">'
+             + '<span class="lamp' + lamp + '"></span>'
+             + '<div class="client-main">'
+               + '<div class="client-name">' + escapeHtml(client.name) + '</div>'
+               + '<div class="client-meta">' + escapeHtml(stateLabel(client))
+                 + (client.port_name ? ' · ' + escapeHtml(client.port_name) : '')
+                 + ' · ' + count + (count === 1 ? ' recording' : ' recordings')
+                 + (client.pending_uploads
+                     ? ' · ' + client.pending_uploads + ' waiting to upload' : '')
+               + '</div>'
+             + '</div>'
+             + '<div class="client-actions">'
+               + '<button class="btn ghost" data-act="secret">New secret</button>'
+               + '<button class="btn ghost" data-act="'
+                 + (client.revoked ? 'restore">Restore' : 'revoke">Revoke') + '</button>'
+               + (count ? '' : '<button class="btn ghost danger" data-act="delete">Remove</button>')
+             + '</div>'
+             + '</div>';
+      }).join('');
+    }
+
+    function reveal(name, secret) {
+      f.revealFor.textContent = name;
+      f.revealValue.textContent = secret;
+      f.reveal.hidden = false;
+    }
+
+    async function refresh() {
+      fill(await api('/api/settings'));
+    }
+
+    async function addClient() {
+      const name = f.newName.value.trim();
+      if (!name) { toast('Give the client a name first', 'error'); return; }
+      try {
+        const body = await api('/api/clients', {
+          method: 'POST', body: JSON.stringify({ name }),
+        });
+        f.newName.value = '';
+        reveal(body.client.name, body.secret);
+        await refresh();
+      } catch (err) { toast(err.message, 'error'); }
+    }
+
+    async function clientAction(event) {
+      const button = event.target.closest('button[data-act]');
+      if (!button) return;
+      const row = button.closest('.client-row');
+      const id = row.dataset.id;
+      const name = row.querySelector('.client-name').textContent;
+      const act = button.dataset.act;
+
+      try {
+        if (act === 'secret') {
+          if (!confirm('Issue a new secret for “' + name + '”?\n\n'
+                       + 'Its current secret stops working immediately, and it will '
+                       + 'not be able to upload until you paste the new one into it.')) return;
+          const body = await api('/api/clients/' + encodeURIComponent(id) + '/secret',
+                                 { method: 'POST' });
+          reveal(name, body.secret);
+        } else if (act === 'revoke') {
+          if (!confirm('Stop accepting uploads from “' + name + '”?\n\n'
+                       + 'Its recordings stay in the library.')) return;
+          await api('/api/clients/' + encodeURIComponent(id) + '/revoke', { method: 'POST' });
+        } else if (act === 'restore') {
+          await api('/api/clients/' + encodeURIComponent(id) + '/restore', { method: 'POST' });
+        } else if (act === 'delete') {
+          if (!confirm('Remove “' + name + '”?')) return;
+          await api('/api/clients/' + encodeURIComponent(id), { method: 'DELETE' });
+        }
+        await refresh();
+      } catch (err) { toast(err.message, 'error'); }
     }
 
     async function downloadSamples() {
@@ -228,47 +341,37 @@
 
     async function open() {
       try {
-        fill(await api('/api/settings'));
+        f.reveal.hidden = true;
+        await refresh();
         dialog.showModal();
       } catch (err) { toast(err.message, 'error'); }
     }
 
-    async function save() {
-      const body = {
-        idle_seconds: parseFloat(f.idle.value),
-        min_notes: parseInt(f.minNotes.value, 10),
-        min_seconds: parseFloat(f.minSeconds.value),
-        device_match: f.device.value,
-      };
-      for (const [key, value] of Object.entries(body)) {
-        if (typeof value === 'number' && Number.isNaN(value)) {
-          toast('“' + key.replace(/_/g, ' ') + '” needs a number', 'error');
-          return;
-        }
-      }
-      try {
-        fill(await api('/api/settings', { method: 'PUT', body: JSON.stringify(body) }));
-        toast('Settings saved');
-        dialog.close();
-      } catch (err) { toast(err.message, 'error'); }
-    }
-
-    async function reset() {
-      if (!confirm('Discard these settings and go back to the .env values?\n\n'
-                   + 'The .env values take effect after the service restarts.')) return;
-      try {
-        fill(await api('/api/settings/reset', { method: 'POST' }));
-        toast('Reset — restart the service to pick up .env');
-      } catch (err) { toast(err.message, 'error'); }
-    }
-
     openBtn.addEventListener('click', open);
-    f.save.addEventListener('click', save);
-    f.reset.addEventListener('click', reset);
     f.sampleDownload.addEventListener('click', downloadSamples);
-    // Enter anywhere in the form should save, not silently dismiss the dialog.
-    dialog.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); save(); }
+    f.addClient.addEventListener('click', addClient);
+    f.clientList.addEventListener('click', clientAction);
+    f.newName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addClient(); }
+    });
+    f.revealCopy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(f.revealValue.textContent);
+        toast('Secret copied');
+      } catch (_) {
+        // Clipboard access needs a secure context, which plain HTTP on a LAN is
+        // not. Select it instead so it is one keystroke away.
+        const range = document.createRange();
+        range.selectNodeContents(f.revealValue);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        toast('Select and copy the secret above');
+      }
+    });
+    // Live status should keep the open dialog honest.
+    document.addEventListener('midi:client_status', () => {
+      if (dialog.open) refresh().catch(() => {});
     });
   }
 

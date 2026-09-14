@@ -13,13 +13,10 @@
   <header class="topbar">
     <a href="/" class="wordmark">MIDI&nbsp;<b>Memory</b> <span>always listening</span></a>
     <div class="console">
-      <div class="readout device">
-        <span class="lamp" id="lamp-device"></span>
-        <span class="val" id="device-name">connecting…</span>
-      </div>
-      <div class="readout">
-        <span class="lamp" id="lamp-rec"></span>
-        <span class="val" id="rec-state">idle</span>
+      <!-- One readout per registered client. With a single client -- which is
+           what most setups are -- this reads exactly like a single device. -->
+      <div class="clients-strip" id="clients-strip">
+        <span class="readout muted" id="clients-empty">no capture clients</span>
       </div>
       <button class="icon-btn cog" id="open-settings" title="Settings"
               aria-label="Settings" aria-haspopup="dialog">
@@ -52,45 +49,27 @@
 
     <div class="sheet-body">
       <section class="fieldset">
-        <h3>Recording</h3>
+        <h3>Capture clients</h3>
+        <p class="hint">Each client is a machine listening to an instrument. Recording
+          settings live on the client itself, at its own address.</p>
 
-        <label class="row-field">
-          <span class="label">Idle timeout</span>
-          <span class="control">
-            <input type="number" id="set-idle" min="3" max="3600" step="1"> <em>seconds</em>
-          </span>
-          <span class="hint">Silence this long ends a session and files it as its own idea.
-            Lower it if separate ideas keep getting merged; raise it if one idea keeps
-            getting split in half.</span>
-        </label>
+        <div class="client-list" id="client-list"></div>
 
-        <label class="row-field">
-          <span class="label">Minimum notes</span>
-          <span class="control">
-            <input type="number" id="set-min-notes" min="0" max="200" step="1"> <em>notes</em>
-          </span>
-          <span class="hint">Takes with fewer notes are discarded, so brushing a key does
-            not litter the library.</span>
-        </label>
+        <div class="new-client">
+          <input type="text" id="new-client-name" maxlength="40"
+                 placeholder="Name this client, e.g. Upright piano" autocomplete="off">
+          <button class="btn" type="button" id="add-client">Add client</button>
+        </div>
 
-        <label class="row-field">
-          <span class="label">Minimum length</span>
-          <span class="control">
-            <input type="number" id="set-min-seconds" min="0" max="120" step="0.5"> <em>seconds</em>
-          </span>
-          <span class="hint">Takes shorter than this are discarded too.</span>
-        </label>
-
-        <label class="row-field">
-          <span class="label">Device filter</span>
-          <span class="control wide">
-            <input type="text" id="set-device" placeholder="any connected instrument">
-          </span>
-          <span class="hint">Only use MIDI ports whose name contains this. Leave empty to
-            use whatever is connected. Applies within a few seconds.</span>
-        </label>
+        <div class="secret-reveal" id="secret-reveal" hidden>
+          <div class="secret-head">
+            <b>Secret for <span id="secret-for"></span></b>
+            <span>This is the only time it is shown. Paste it into the client now.</span>
+          </div>
+          <code class="secret-value" id="secret-value"></code>
+          <button class="btn" type="button" id="secret-copy">Copy</button>
+        </div>
       </section>
-
 
       <section class="fieldset">
         <h3>Playback</h3>
@@ -113,10 +92,8 @@
     </div>
 
     <div class="sheet-foot">
-      <button class="btn ghost" type="button" id="settings-reset">Reset to .env</button>
       <span style="flex:1"></span>
-      <button class="btn" value="cancel">Cancel</button>
-      <button class="btn primary" type="button" id="settings-save">Save</button>
+      <button class="btn primary" value="cancel">Done</button>
     </div>
   </form>
 </dialog>

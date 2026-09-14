@@ -2,10 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "midi-memory",
+      "name": "midi-memory-server",
       "runtimeExecutable": ".venv/bin/python",
-      "runtimeArgs": ["-m", "app"],
+      "runtimeArgs": ["-m", "midi_memory.server"],
       "port": 8477
+    },
+    {
+      "name": "midi-memory-client",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "midi_memory.client"],
+      "port": 8478
     }
   ]
 }

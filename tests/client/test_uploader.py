@@ -27,7 +27,8 @@ from midi_memory.shared.protocol import MIDI_FILENAME
 @pytest.fixture
 def server(tmp_path):
     """The library server, running for real."""
-    server_settings = ServerSettings(data_dir=tmp_path / "server", password="")
+    server_settings = ServerSettings(_env_file=None, data_dir=tmp_path / "server",
+                                     password="")
     server_settings.ensure_dirs()
     with TestClient(create_app(server_settings)) as c:
         yield c

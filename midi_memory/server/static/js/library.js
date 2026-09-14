@@ -17,10 +17,12 @@
     fav: document.getElementById('f-fav'),
     clear: document.getElementById('f-clear'),
     tagbar: document.getElementById('tagbar'),
+    clientbar: document.getElementById('clientbar'),
     stats: document.getElementById('library-stats'),
   };
 
-  const state = { tags: new Set(), offset: 0, total: 0, loading: false };
+  const state = { tags: new Set(), offset: 0, total: 0, loading: false,
+                  client: '', multiClient: false };
 
   /* ------------------------------------------------- filters <-> the URL -- */
   function readUrl() {
@@ -32,6 +34,9 @@
     el.sort.value = p.get('sort') || 'date:desc';
     el.fav.classList.toggle('on', p.get('fav') === '1');
     state.tags = new Set(p.getAll('tag'));
+    state.client = p.get('client') || '';
+    // More than one client is what makes "which one?" a question worth asking.
+    state.multiClient = el.clientbar.querySelectorAll('.pip[data-client]').length > 1;
     paintTags();
   }
 
@@ -43,6 +48,7 @@
     if (el.duration.value) p.set('duration', el.duration.value);
     if (el.sort.value !== 'date:desc') p.set('sort', el.sort.value);
     if (el.fav.classList.contains('on')) p.set('fav', '1');
+    if (state.client) p.set('client', state.client);
     state.tags.forEach(t => p.append('tag', t));
 
     const qs = p.toString();
@@ -61,6 +67,8 @@
     if (min) p.set('min_duration_ms', min);
     if (max) p.set('max_duration_ms', max);
 
+    if (state.client) p.set('client_id', state.client);
+
     const [sort, order] = el.sort.value.split(':');
     p.set('sort', sort); p.set('order', order);
     state.tags.forEach(t => p.append('tag', t));
@@ -71,6 +79,9 @@
   function paintTags() {
     el.tagbar.querySelectorAll('.pip[data-tag]').forEach(pip => {
       pip.classList.toggle('on', state.tags.has(pip.dataset.tag));
+    });
+    el.clientbar.querySelectorAll('.pip[data-client]').forEach(pip => {
+      pip.classList.toggle('on', state.client === pip.dataset.client);
     });
   }
 
@@ -119,6 +130,10 @@
           '<span>' + formatDate(s.started_at) + '</span>' +
           '<span class="dot">·</span><span>' + s.note_count + ' notes</span>' +
           (range ? '<span class="dot">·</span><span>' + range + '</span>' : '') +
+          // Naming the source only helps once there is more than one source.
+          (state.multiClient && s.client_name
+            ? '<span class="dot">·</span><span class="from">'
+              + escapeHtml(s.client_name) + '</span>' : '') +
         '</div>' +
         (tags ? '<div class="row-tags">' + tags + '</div>' : '') +
       '</div>' +
@@ -268,7 +283,7 @@
     el.q.value = ''; el.from.value = ''; el.to.value = '';
     el.duration.value = ''; el.sort.value = 'date:desc';
     el.fav.classList.remove('on');
-    state.tags.clear(); paintTags();
+    state.tags.clear(); state.client = ''; paintTags();
     onFilterChange(true);
   });
 
@@ -277,6 +292,15 @@
     if (!pip) return;
     const tag = pip.dataset.tag;
     state.tags.has(tag) ? state.tags.delete(tag) : state.tags.add(tag);
+    paintTags();
+    onFilterChange(true);
+  });
+
+  el.clientbar.addEventListener('click', (e) => {
+    const pip = e.target.closest('.pip[data-client]');
+    if (!pip) return;
+    // Clicking the selected client again clears the filter, like the tag pips.
+    state.client = state.client === pip.dataset.client ? '' : pip.dataset.client;
     paintTags();
     onFilterChange(true);
   });
@@ -296,7 +320,7 @@
 
     const unfiltered = !el.q.value.trim() && !el.from.value && !el.to.value
       && !el.duration.value && !el.fav.classList.contains('on')
-      && state.tags.size === 0;
+      && state.tags.size === 0 && !state.client;
 
     if (!unfiltered || el.sort.value !== 'date:desc') {
       load(true);

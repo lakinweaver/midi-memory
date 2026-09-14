@@ -53,6 +53,13 @@
     <button class="btn ghost" id="f-clear" hidden>Clear</button>
   </div>
 
+  <div class="tagbar" id="clientbar" {% if clients | length < 2 %}hidden{% endif %}>
+    <span class="tagbar-label">From</span>
+    {% for client in clients %}
+      <button class="pip" data-client="{{ client.id }}">{{ client.name }}</button>
+    {% endfor %}
+  </div>
+
   <div class="tagbar" id="tagbar" {% if not tags %}hidden{% endif %}>
     <span class="tagbar-label">Tags</span>
     {% for tag in tags %}

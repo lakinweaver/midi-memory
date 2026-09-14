@@ -1,0 +1,9 @@
+{
+  "idle_seconds": 5.0,
+  "min_notes": 4,
+  "min_seconds": 1.0,
+  "device_match": "",
+  "server_url": "http://localhost:8477",
+  "client_secret": "kpDqrw2e5itkJdOwaWbLNTO6bjEL5iyPSJn6Np8ur5o",
+  "client_name": "Upright piano"
+}

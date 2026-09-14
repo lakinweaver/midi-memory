@@ -11,11 +11,19 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
+from pydantic_settings import SettingsConfigDict
 
 from midi_memory.shared.config import BaseAppSettings
 
 
 class Settings(BaseAppSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="MIDI_MEMORY_",
+        env_file=(".env", ".env.client"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     # The server owns 8080; the client sits next to it so both can run on one
     # machine during development without a port clash.
     port: int = 8081

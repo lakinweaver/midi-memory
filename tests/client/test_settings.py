@@ -44,7 +44,7 @@ def test_settings_survive_a_restart(settings):
     with TestClient(create_app(settings, start_capture=False)) as c:
         c.put("/api/settings", json={"idle_seconds": 30, "min_notes": 9})
 
-    fresh = Settings(data_dir=settings.data_dir)
+    fresh = Settings(_env_file=None, data_dir=settings.data_dir)
     assert fresh.idle_seconds == 45.0, "a new object starts from .env"
     SettingsStore(fresh).load()
     assert fresh.idle_seconds == 30.0 and fresh.min_notes == 9

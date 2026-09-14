@@ -69,6 +69,11 @@
             <span class="v" id="m-range">—</span></div>
           <div class="meta-item"><span class="k">Avg velocity</span>
             <span class="v">{{ session.avg_velocity | round(0) | int if session.avg_velocity else '—' }}</span></div>
+          {% if session.client_name %}
+          <div class="meta-item"><span class="k">Recorded by</span>
+            <span class="v"><a class="from-link"
+              href="/?client={{ session.client_id }}">{{ session.client_name }}</a></span></div>
+          {% endif %}
           {% if session.device_name %}
           <div class="meta-item"><span class="k">Device</span>
             <span class="v" style="font-size:11px">{{ session.device_name }}</span></div>

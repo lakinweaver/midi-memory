@@ -8,10 +8,19 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic_settings import SettingsConfigDict
+
 from midi_memory.shared.config import BaseAppSettings
 
 
 class Settings(BaseAppSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="MIDI_MEMORY_",
+        env_file=(".env", ".env.server"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     @property
     def sessions_dir(self) -> Path:
         return self.data_dir / "sessions"

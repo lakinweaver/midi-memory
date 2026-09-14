@@ -14,6 +14,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class BaseAppSettings(BaseSettings):
+    """Shared defaults. Subclasses name the extra .env file they also read.
+
+    Both halves answer to MIDI_MEMORY_*, because on a real install they are on
+    different machines with a .env each and there is nothing to confuse. When
+    they share a directory -- which is only ever during development -- the
+    side-specific file settles it: later files win, so .env holds what they
+    agree on and .env.server / .env.client hold what they do not.
+    """
+
     model_config = SettingsConfigDict(
         env_prefix="MIDI_MEMORY_",
         env_file=".env",

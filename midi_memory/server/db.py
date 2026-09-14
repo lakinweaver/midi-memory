@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_started  ON sessions(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_duration ON sessions(duration_ms);
 CREATE INDEX IF NOT EXISTS idx_sessions_favorite ON sessions(favorite);
-CREATE INDEX IF NOT EXISTS idx_sessions_client   ON sessions(client_id);
 
 CREATE TABLE IF NOT EXISTS clients (
     id           TEXT    PRIMARY KEY,
@@ -109,6 +108,10 @@ class Database:
             # shows nothing, so an existing single-Pi library looks untouched.
             if "client_id" not in columns:
                 conn.execute("ALTER TABLE sessions ADD COLUMN client_id TEXT")
+            # Only now that the column is certain to exist.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_client ON sessions(client_id)"
+            )
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     # -- writes --------------------------------------------------------------

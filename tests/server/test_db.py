@@ -191,3 +191,44 @@ def test_sessions_without_a_fingerprint_can_be_found_and_filled(db):
     db.set_fingerprint("session00000000001", [[0, 60, 5, 100]])
     assert db.ids_missing_fingerprint() == []
     assert db.get_session("session00000000001")["fingerprint"] == [[0, 60, 5, 100]]
+
+
+# -- adopting a library recorded before the server/client split ---------------
+def test_a_pre_split_database_is_migrated_in_place(tmp_path):
+    """The whole existing library has to survive the upgrade untouched.
+
+    Builds the schema as it stood before clients existed, fills it, and then
+    opens it with the current code -- which is exactly what happens the first
+    time the server starts against a data directory it inherited.
+    """
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript("""
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '', event_count INTEGER NOT NULL DEFAULT 0,
+                note_count INTEGER NOT NULL DEFAULT 0, lowest_note INTEGER,
+                highest_note INTEGER, avg_velocity REAL,
+                device_name TEXT NOT NULL DEFAULT '', favorite INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            INSERT INTO sessions VALUES
+                ('older0000000001', '2024-01-01T10:00:00+00:00', '2024-01-01T10:00:30+00:00',
+                 30000, 'An old idea', '', 80, 40, 48, 84, 88.0, 'Yamaha', 1,
+                 '2024-01-01T10:00:00+00:00', '2024-01-01T10:00:00+00:00');
+        """)
+
+    db = Database(path)
+
+    session = db.get_session("older0000000001")
+    assert session["name"] == "An old idea"
+    assert session["favorite"] is True, "stars survive"
+    assert session["client_id"] is None, "nothing recorded it that we know of"
+    assert session["client_name"] is None
+
+    assert db.search()["total"] == 1
+    # And the upgraded library still accepts new arrivals.
+    db.insert_session(make_record(2), client_id=None)
+    assert db.search()["total"] == 2
