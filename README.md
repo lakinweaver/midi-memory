@@ -51,34 +51,45 @@ authenticate with their own secret rather than with the login.
 Recordings and the database land in `./data`. Back that up and you have backed up
 everything that matters — the recordings are plain files you can copy out at any time.
 
-#### On a NAS, set `PUID` and `PGID`
+#### Running on a NAS
 
-The container writes to `/data`, which is your `./data` bind mount. On a plain Linux
-host the defaults are fine. On a NAS — Synology, unRAID, QNAP — that directory belongs
-to a real user there, with ACLs on top, and a container running as some invented uid
-cannot write to it. The symptom is the container starting and immediately exiting with
+The container writes to `/data`, which is your `./data` bind mount. On a NAS —
+Synology, unRAID, QNAP — that directory belongs to a real user there, with ACLs on top,
+and a container running as some invented uid cannot write to it. That is what `PUID` and
+`PGID` are for.
+
+`docker-compose.yml` defaults them to **1030** and **100**, the docker user on the
+Synology this is deployed to, so on that box there is nothing to set. On any other
+machine, put its own ids in a `.env` beside `docker-compose.yml` (see `.env.example`),
+or edit the compose file's `environment:` block, which is easier from Synology's
+Container Manager:
+
+```bash
+id your-user        # e.g. uid=1030(docker) gid=100(users)
+```
+
+Set either to empty instead and the container adopts whoever already owns `./data`,
+which works without knowing any of this — it logs which ids it picked on startup.
+
+The container starts as root only long enough to sort out ownership, then drops to those
+ids; nothing but the entrypoint runs as root. Where the ids already match it does not
+touch ownership at all, which matters on network shares, where `chown` is often refused
+outright — and a refusal warns and carries on rather than killing the container.
+
+If it still cannot write, the server says who owns the directory and who it is running
+as, rather than a bare traceback:
 
 ```
 Cannot write to the data directory /data/sessions: /data belongs to uid 1026:gid 100
 and this is running as uid 10001:gid 10001 (midimemory).
 ```
 
-Find the ids that own the folder and tell the container to use them:
+**After pulling a new version, rebuild.** `docker compose up -d` on its own reuses the
+image you already have, so changes to the Dockerfile or the entrypoint are not picked up:
 
 ```bash
-id your-dsm-username        # e.g. uid=1026(lakin) gid=100(users)
+docker compose up -d --build
 ```
-
-```bash
-PUID=1026 PGID=100 docker compose up -d
-```
-
-or set them in the `environment:` block of `docker-compose.yml`, which is easier if you
-are driving this from Synology's Container Manager rather than a shell. The container
-starts as root only long enough to take ownership of `/data` and then drops to those
-ids; nothing but the entrypoint runs as root. If the ids already match, it does not
-touch ownership at all — which matters on network shares, where `chown` is often refused
-outright.
 
 ### 2. Register a client
 
@@ -164,7 +175,7 @@ are different machines with a `.env` each, and there is nothing to confuse.
 | `MIDI_MEMORY_PASSWORD` | *(empty)* | Password for the library. Empty disables the login. |
 | `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
 | `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
-| `PUID` / `PGID` | `10001` | Docker only: who the server runs as, so a bind mount from a NAS share is writable. |
+| `PUID` / `PGID` | `1030` / `100` | Docker only: who the server runs as. Empty adopts the owner of the mounted directory. |
 
 **Client**
 

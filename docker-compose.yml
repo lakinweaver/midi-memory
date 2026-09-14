@@ -16,12 +16,14 @@ services:
       # everything that matters.
       - ./data:/data
     environment:
-      # Who the server runs as, and who it makes /data belong to. The defaults
-      # suit a plain Linux host; on a NAS set them to the user that owns the
-      # shared folder above -- `id <your-user>` over SSH prints both. On
-      # Synology that is usually something like PUID=1026, PGID=100.
-      PUID: "${PUID:-10001}"
-      PGID: "${PGID:-10001}"
+      # Who the server runs as, and who ./data ends up belonging to. These
+      # default to the docker user on Lakin's Synology; override them in a .env
+      # file beside this one (see .env.example) on any other box.
+      #
+      # Set either to empty and the container adopts whoever already owns
+      # ./data instead, which suits a machine whose uid you do not know.
+      PUID: "${PUID:-1030}"
+      PGID: "${PGID:-100}"
       # Set a password to put the library behind a login. Left empty, anyone on
       # the network can open it -- which is often what you want at home, and
       # never what you want if this is reachable from outside it.

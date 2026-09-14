@@ -44,13 +44,17 @@ VOLUME ["/data"]
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Deliberately still root here: the entrypoint needs it to chown /data, and
-# drops to PUID:PGID before the server ever runs.
+# Deliberately still root here: the entrypoint needs it to own the data
+# directory, and drops privileges before the server ever runs.
+#
+# PUID/PGID are deliberately NOT given defaults. Unset is meaningful: it tells
+# the entrypoint to adopt whoever already owns the data directory, which is what
+# makes a NAS bind mount work with no configuration. A default here would look
+# harmless and quietly chown somebody's share to a uid that does not exist on
+# their box.
 ENV MIDI_MEMORY_DATA_DIR=/data \
     MIDI_MEMORY_HOST=0.0.0.0 \
     MIDI_MEMORY_PORT=8080 \
-    PUID=10001 \
-    PGID=10001 \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8080
