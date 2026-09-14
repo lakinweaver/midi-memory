@@ -138,6 +138,63 @@ The server keeps the old data directory layout exactly, so point it at your exis
 recordings made before the split simply have no client to show, which is invisible
 until you have more than one client anyway.
 
+## Updating an install
+
+### The server
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+**`--build` is not optional.** The compose file names the image, so `docker compose up -d`
+on its own finds that image already present and reuses it — your pull changes nothing and
+the container comes back exactly as it was. From Synology's Container Manager the
+equivalent is Action → Build, then Start; the Start button alone has the same problem.
+
+Your recordings are in `./data` and a rebuild does not touch them. Schema changes are
+applied on startup, so there is no migration step.
+
+### A capture client
+
+The Pi's install is editable — the installed package *is* the git checkout — so for
+changes to the code, templates or the settings page, a pull and a restart is the whole
+update:
+
+```bash
+cd ~/midi-memory
+git pull
+sudo systemctl restart midi-memory-client
+```
+
+Restarting mid-take is safe: the service gets a SIGINT and twenty seconds to finalise the
+recording in progress into the spool before it goes down, and anything already spooled
+uploads when it comes back.
+
+Re-run the installer instead when `pyproject.toml` changed, when the installer or the
+systemd unit changed, or whenever you would rather not think about it:
+
+```bash
+cd ~/midi-memory
+git pull
+./scripts/install_client_pi.sh
+```
+
+It is idempotent: it keeps your `.env`, reinstalls dependencies, and restarts the service.
+
+### Which half needs it
+
+Most changes touch one side only. After pulling, this says which:
+
+```bash
+git diff --name-only HEAD@{1} HEAD
+```
+
+`midi_memory/server/` or `docker/` means rebuild the server; `midi_memory/client/` or
+`scripts/` means update the Pi; `midi_memory/shared/` means both. There is no need to keep
+them in lockstep — the client spools through a server outage, so updating one and getting
+to the other later loses nothing.
+
 ## Development, on any machine
 
 ```bash
