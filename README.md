@@ -164,7 +164,9 @@ idea.
 
 Rather than leaving that as a setup step to remember, the app reports it and fixes it
 itself: the settings dialog shows how many samples are installed, with a Download button
-when any are missing. `scripts/fetch_samples.py` does the same thing from the command
+when any are missing. The manifest that lists them is generated too, so if it goes
+missing while the audio is still there — restored from a backup, copied by hand — it is
+rebuilt from what is on disk at startup. `scripts/fetch_samples.py` does the same thing from the command
 line, and both share one implementation in `app/samples.py`. Either is safe to re-run —
 files already present are skipped, so an interrupted download resumes.
 

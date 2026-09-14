@@ -77,6 +77,26 @@ def write_manifest(directory: Path) -> int:
     return len(present)
 
 
+def ensure_manifest(directory: Path | None = None) -> bool:
+    """Rebuild the manifest if samples are present but it is not.
+
+    The manifest is generated, not source, so it is not in the repository -- and
+    it can go missing independently of the audio: restored from a backup, copied
+    across by hand, or removed by a pull. Since it can always be derived from
+    what is on disk, derive it rather than making someone notice that playback
+    quietly got worse.
+    """
+    directory = directory or audio_dir()
+    if not directory.exists():
+        return False
+    present = _present(directory)
+    if not present or (directory / MANIFEST_NAME).exists():
+        return False
+    write_manifest(directory)
+    log.info("Rebuilt the sample manifest from %d file(s) on disk", len(present))
+    return True
+
+
 def _download_one(url: str, target: Path) -> bool:
     """Fetch one sample, retrying briefly.
 

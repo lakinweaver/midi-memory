@@ -15,6 +15,7 @@ from app.api import settings as settings_api
 from app.api import status as status_api
 from app.api import tags as tags_api
 from app.auth import Auth, is_public
+from app import samples
 from app.config import Settings, get_settings
 from app.db import Database
 from app.events import EventBus
@@ -51,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.settings = settings
+        samples.ensure_manifest()
         # Apply saved runtime overrides before anything reads the settings.
         app.state.settings_store = SettingsStore(settings)
         app.state.settings_store.load()

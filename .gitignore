@@ -5,6 +5,9 @@ __pycache__/
 .pytest_cache/
 .env
 data/
+# Piano samples and the manifest describing them are generated, not source:
+# fetched by scripts/fetch_samples.py or the Download button in Settings.
 app/static/audio/*.mp3
 app/static/audio/*.ogg
+app/static/audio/manifest.json
 .DS_Store

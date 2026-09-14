@@ -108,3 +108,41 @@ def test_download_requires_login(settings):
     settings.password = "hunter2"
     with TestClient(create_app(settings)) as c:
         assert c.post("/api/settings/samples").status_code == 401
+
+
+def test_missing_manifest_is_rebuilt_from_what_is_on_disk(tmp_path):
+    """The manifest is generated, so losing it must not cost you the samples."""
+    for name, _ in samples.SAMPLES[:4]:
+        fake_sample(tmp_path, name)
+    samples.write_manifest(tmp_path)
+    (tmp_path / "manifest.json").unlink()
+    assert samples.status(tmp_path)["ready"] is False
+
+    assert samples.ensure_manifest(tmp_path) is True
+    assert samples.status(tmp_path)["ready"] is True
+
+
+def test_rebuild_does_nothing_when_there_is_nothing_to_describe(tmp_path):
+    assert samples.ensure_manifest(tmp_path) is False
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_rebuild_leaves_an_existing_manifest_alone(tmp_path):
+    fake_sample(tmp_path, "C4")
+    (tmp_path / "manifest.json").write_text('{"format":"mp3","samples":{"60":"C4.mp3"}}')
+    before = (tmp_path / "manifest.json").read_text()
+
+    assert samples.ensure_manifest(tmp_path) is False
+    assert (tmp_path / "manifest.json").read_text() == before
+
+
+def test_app_startup_rebuilds_a_missing_manifest(settings, tmp_path, monkeypatch):
+    """Exactly what happens on the Pi when a pull removes the generated file."""
+    for name, _ in samples.SAMPLES[:3]:
+        fake_sample(tmp_path, name)
+    monkeypatch.setattr(samples, "audio_dir", lambda: tmp_path)
+
+    settings.midi_source = "none"
+    with TestClient(create_app(settings)) as c:
+        assert c.get("/api/settings").json()["samples"]["ready"] is True
+    assert (tmp_path / "manifest.json").exists()
