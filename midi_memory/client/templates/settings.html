@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100E0C">
+  <title>Capture client · MIDI Memory</title>
+  <link rel="stylesheet" href="{{ static('css/client.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23100E0C'/><circle cx='16' cy='16' r='6' fill='%23E8913F'/></svg>">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="wordmark">MIDI&nbsp;<b>Memory</b> <span>capture client</span></div>
+  </header>
+
+  <div class="banner" id="setup-banner" {% if linked %}hidden{% endif %}>
+    <b>This client is not connected to a server yet.</b>
+    <ol>
+      <li>Open your MIDI Memory server and go to Settings → Clients.</li>
+      <li>Add a client, give it a name, and copy the secret it shows you.</li>
+      <li>Paste the server address and that secret below, and save.</li>
+    </ol>
+  </div>
+
+  <div class="banner err" id="error-banner" hidden></div>
+
+  <div class="readouts">
+    <div class="readout">
+      <span class="k">Keyboard</span>
+      <span class="v"><span class="lamp" id="lamp-device"></span><span id="v-device">checking…</span></span>
+    </div>
+    <div class="readout">
+      <span class="k">Recorder</span>
+      <span class="v"><span class="lamp" id="lamp-rec"></span><span id="v-rec">idle</span></span>
+    </div>
+    <div class="readout">
+      <span class="k">Server</span>
+      <span class="v"><span class="lamp" id="lamp-link"></span><span id="v-link">not configured</span></span>
+    </div>
+    <div class="readout">
+      <span class="k">Waiting to upload</span>
+      <span class="v" id="v-pending">—</span>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card-head">Server</div>
+    <div class="card-body">
+      <label class="field">
+        <span class="label">Server address</span>
+        <input type="url" id="f-server" placeholder="http://192.168.1.20:8080" autocomplete="off">
+        <span class="hint">Where the library lives. Include the port.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Client secret</span>
+        <input type="password" id="f-secret" placeholder="paste the secret from the server" autocomplete="off">
+        <span class="hint" id="secret-hint">Shown once when you add a client on the server.
+          Leave this blank to keep the secret already saved here.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Name</span>
+        <input type="text" id="f-name" maxlength="40" placeholder="Upright piano" autocomplete="off">
+        <span class="hint">Only for your own reference on this page; the server shows
+          the name you registered it under.</span>
+      </label>
+
+      <div class="actions">
+        <button class="btn" type="button" id="test">Test connection</button>
+        <button class="btn" type="button" id="upload-now">Upload now</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">Recording</div>
+    <div class="card-body">
+      <label class="field">
+        <span class="label">Idle timeout <em id="u-idle">seconds</em></span>
+        <input type="number" id="f-idle" min="3" max="3600" step="1">
+        <span class="hint">Silence this long ends a session and files it as its own idea.
+          Lower it if separate ideas keep getting merged; raise it if one idea keeps
+          getting split in half.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Minimum notes</span>
+        <input type="number" id="f-min-notes" min="0" max="200" step="1">
+        <span class="hint">Takes with fewer notes are discarded, so brushing a key does
+          not litter the library.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Minimum length <em>seconds</em></span>
+        <input type="number" id="f-min-seconds" min="0" max="120" step="0.5">
+        <span class="hint">Takes shorter than this are discarded too.</span>
+      </label>
+
+      <label class="field">
+        <span class="label">Device filter</span>
+        <input type="text" id="f-device" placeholder="any connected instrument" autocomplete="off">
+        <span class="hint">Only use MIDI ports whose name contains this. Leave empty to
+          use whatever is connected. Applies within a few seconds.</span>
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">Set in .env · restart required</div>
+    <div class="card-body">
+      <dl class="readonly" id="readonly"></dl>
+    </div>
+  </section>
+
+  <div class="actions">
+    <span class="spacer"></span>
+    <button class="btn primary" type="button" id="save">Save settings</button>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script src="{{ static('js/client.js') }}"></script>
+</body>
+</html>

@@ -1,6 +1,10 @@
-import pytest
+"""Fixtures shared by every suite.
 
-from app.config import Settings
+`settings` is deliberately defined per-suite rather than here: the server and the
+client have different Settings classes now, and a test asking for "settings"
+means the settings of whichever side it is exercising.
+"""
+import pytest
 
 
 class FakeClock:
@@ -20,16 +24,3 @@ class FakeClock:
 @pytest.fixture
 def clock() -> FakeClock:
     return FakeClock()
-
-
-@pytest.fixture
-def settings(tmp_path) -> Settings:
-    s = Settings(
-        data_dir=tmp_path / "data",
-        idle_seconds=45.0,
-        min_notes=4,
-        min_seconds=2.0,
-        password="",
-    )
-    s.ensure_dirs()
-    return s

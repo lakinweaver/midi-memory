@@ -1,7 +1,7 @@
 [project]
 name = "midi-memory"
-version = "0.1.0"
-description = "Always-on MIDI notepad: continuously records a digital piano and files the ideas into browsable sessions."
+version = "0.2.0"
+description = "Always-on MIDI notepad: capture clients record a digital piano continuously and file the ideas into a browsable library on a server."
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
@@ -9,26 +9,35 @@ dependencies = [
     "jinja2>=3.1",
     "python-multipart>=0.0.12",
     "pydantic-settings>=2.6",
-    "itsdangerous>=2.2",
     "mido>=1.3.3",
 ]
 
 [project.optional-dependencies]
+# The library server: adds cookie signing for the browser login.
+server = ["itsdangerous>=2.2"]
+# A capture client: adds the HTTP client it uploads with, and cookie signing
+# for its own settings page.
+client = ["httpx>=0.27", "itsdangerous>=2.2"]
 # Linux / Raspberry Pi: native ALSA sequencer input. Pure Python, no compilation.
 alsa = ["alsa-midi>=1.0.4"]
 # macOS/Windows: optional live USB MIDI input for development. Needs CPython <= 3.13.
 portable = ["rtmidi2>=1.4.1"]
-dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "httpx>=0.27"]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "httpx>=0.27", "itsdangerous>=2.2"]
 
 [project.scripts]
-midi-memory = "app.__main__:main"
+midi-memory-server = "midi_memory.server.__main__:main"
+midi-memory-client = "midi_memory.client.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["midi_memory*"]
+
+[tool.setuptools.package-data]
+"midi_memory.server" = ["templates/*.html", "static/**/*"]
+"midi_memory.client" = ["templates/*.html", "static/**/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
