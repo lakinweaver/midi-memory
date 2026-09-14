@@ -11,6 +11,10 @@
   const SAMPLE_WAIT_MS = 12000;  // give up waiting and use the synth rather than hang
   const DAMPER_RELEASE = 0.28;   // seconds for the damper to stop a string
   const SYNTH_RELEASE = 0.22;
+  // Long enough to swallow the step, short enough that stopping still feels
+  // instant. Cutting a voice mid-waveform is a discontinuity, and a
+  // discontinuity is a click, whatever the sample happened to be doing.
+  const PANIC_FADE = 0.015;
   const MAX_VOICES = 64;
 
   class PianoEngine {
@@ -19,7 +23,7 @@
       this.master = null;
       this.buffers = new Map();   // midi note -> AudioBuffer
       this.sampled = false;
-      this.voices = new Set();
+      this.voices = new Map();    // live source node -> the gain it plays through
       this._loading = null;
       this._prefetching = null;
       this._useSamples = false;
@@ -172,13 +176,13 @@
       const level = Math.pow(Math.max(1, velocity) / 127, 1.6) * 0.9;
       // Fixed when playback began: if the samples arrive mid-phrase, finishing
       // on the synth is less jarring than switching instruments halfway.
-      const node = this._useSamples
+      const voice = this._useSamples
         ? this._playSampled(midi, level, when, duration)
         : this._playSynth(midi, level, when, duration);
 
-      if (node) {
-        this.voices.add(node);
-        node.onended = () => this.voices.delete(node);
+      if (voice) {
+        this.voices.set(voice.node, voice.gain);
+        voice.node.onended = () => this.voices.delete(voice.node);
       }
     }
 
@@ -201,7 +205,7 @@
       source.connect(gain).connect(this.master);
       source.start(when);
       source.stop(releaseAt + DAMPER_RELEASE + 0.02);
-      return source;
+      return { node: source, gain };
     }
 
     _playSynth(midi, level, when, duration) {
@@ -242,14 +246,35 @@
         osc.stop(end + 0.01);
         nodes.push(osc);
       }
-      return nodes[0] || null;
+      // One oscillator stands in for the voice: the partials start and stop
+      // together, and they share the gain that a fade has to act on.
+      return nodes.length ? { node: nodes[0], gain } : null;
     }
 
-    /** Cut everything immediately -- used on pause, seek and navigation. */
+    /** Stop everything -- used on pause, seek and navigation.
+     *
+     * Over a few milliseconds rather than at once. Silencing a voice by cutting
+     * it leaves the waveform wherever it was, and the jump from there to zero is
+     * a click; the ramp lands it on silence instead. Short enough that pausing
+     * still feels immediate.
+     */
     panic() {
       if (!this.ctx) return;
-      for (const node of this.voices) {
-        try { node.stop(); } catch (_) {}
+      const now = this.ctx.currentTime;
+      const end = now + PANIC_FADE;
+      for (const [node, gain] of this.voices) {
+        try {
+          // Read the level before cancelling: cancelScheduledValues drops a ramp
+          // that is part-way through, which snaps the parameter back to where
+          // that ramp started -- a bigger jump than the one being avoided.
+          const level = gain.gain.value;
+          gain.gain.cancelScheduledValues(now);
+          gain.gain.setValueAtTime(level, now);
+          gain.gain.linearRampToValueAtTime(0, end);
+          // A voice still waiting its turn in the lookahead has a start time
+          // after this, and a source told to stop before it starts never sounds.
+          node.stop(end);
+        } catch (_) {}
       }
       this.voices.clear();
     }

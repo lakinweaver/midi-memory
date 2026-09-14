@@ -13,7 +13,7 @@ from midi_memory.shared.midi.smf import write_smf
 
 
 def seed(client: TestClient, session_id: str, name: str, *, days_ago: int = 0,
-         notes: int = 6, favorite: bool = False) -> None:
+         notes: int = 6, favorite: bool = False, pedal: bool = False) -> None:
     """Create a real session on disk and in the database."""
     app = client.app
     settings = app.state.settings
@@ -24,6 +24,10 @@ def seed(client: TestClient, session_id: str, name: str, *, days_ago: int = 0,
     for i in range(notes):
         events.append(MidiEvent(i * 0.5, 0x90, 60 + i, 80 + i))
         events.append(MidiEvent(i * 0.5 + 0.4, 0x80, 60 + i, 0))
+    if pedal:
+        events.append(MidiEvent(0.1, 0xB0, 64, 127))
+        events.append(MidiEvent(notes * 0.5, 0xB0, 64, 0))
+        events.sort(key=lambda e: e.t)
     write_smf(events, directory / "session.mid", name=name)
 
     started = datetime.now(timezone.utc) - timedelta(days=days_ago)
@@ -151,6 +155,18 @@ def test_notes_endpoint_feeds_the_player(client):
     first = payload["notes"][0]
     assert {"n", "s", "d", "v"} <= set(first)
     assert first["d"] > 0, "notes need a duration or nothing will sound"
+    assert payload["pedal"] == [], "no pedal in this take"
+
+
+def test_notes_endpoint_reports_where_the_pedal_went_down(client):
+    """The roll marks the press; it no longer draws a tail on every note it caught."""
+    seed(client, "bbbbbbbbbbbbbbbb", "Pedalled", notes=4, pedal=True)
+    payload = client.get("/api/sessions/bbbbbbbbbbbbbbbb/notes").json()
+
+    assert len(payload["pedal"]) == 1
+    assert payload["pedal"][0] == pytest.approx(0.1, abs=0.02)
+    # And the ring time still reaches the pedal lift, because that is what plays.
+    assert max(n["r"] for n in payload["notes"]) > max(n["d"] for n in payload["notes"])
 
 
 def test_download_serves_a_real_midi_file(client):

@@ -64,6 +64,20 @@ class Settings(BaseAppSettings):
         description="One of: auto, alsa, portable, mock, none.",
     )
 
+    # --- the session-break gesture ---
+    marker_enabled: bool = Field(
+        default=True,
+        description="Let a double-press of the marker key end the current session.",
+    )
+    marker_note: int = Field(
+        default=108,
+        description="MIDI note of the marker key. 108 is C8, the top key of an 88.",
+    )
+    marker_double_press_seconds: float = Field(
+        default=0.5,
+        description="Longest gap between the two presses that still reads as one gesture.",
+    )
+
     # --- upload spool ---
     keep_uploaded_days: int = Field(
         default=7,

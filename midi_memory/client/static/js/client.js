@@ -9,7 +9,17 @@
     server: el('f-server'), secret: el('f-secret'), name: el('f-name'),
     idle: el('f-idle'), minNotes: el('f-min-notes'),
     minSeconds: el('f-min-seconds'), device: el('f-device'),
+    markerOn: el('f-marker-on'), markerNote: el('f-marker-note'),
+    markerWindow: el('f-marker-window'),
   };
+
+  // The library page has its own copy of this. Duplicating six lines beats
+  // dragging the library's script onto an SD card to say "C8".
+  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  function noteName(midi) {
+    if (midi === null || midi === undefined || Number.isNaN(midi)) return '—';
+    return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  }
 
   // Fields the user is part-way through typing must not be overwritten by the
   // 2-second poll -- nothing is more annoying than a form that fights back.
@@ -29,6 +39,17 @@
       ? 'Unsaved changes — this client is still using its previous settings.'
       : 'Everything here is saved.';
   }
+
+  // The key and the window only mean anything while the gesture is switched on.
+  function paintMarker() {
+    const on = f.markerOn.checked;
+    el('marker-fields').classList.toggle('disabled', !on);
+    f.markerNote.disabled = !on;
+    f.markerWindow.disabled = !on;
+    el('u-marker-note').textContent = noteName(parseInt(f.markerNote.value, 10));
+  }
+  f.markerOn.addEventListener('change', paintMarker);
+  f.markerNote.addEventListener('input', paintMarker);
 
   // Whether the connection fields differ from what the device is actually using.
   function connectionDirty() {
@@ -75,6 +96,10 @@
     if (!dirty.has('minNotes')) f.minNotes.value = s.min_notes;
     if (!dirty.has('minSeconds')) f.minSeconds.value = s.min_seconds;
     if (!dirty.has('device')) f.device.value = s.device_match || '';
+    if (!dirty.has('markerOn')) f.markerOn.checked = !!s.marker_enabled;
+    if (!dirty.has('markerNote')) f.markerNote.value = s.marker_note;
+    if (!dirty.has('markerWindow')) f.markerWindow.value = s.marker_double_press_seconds;
+    paintMarker();
     if (!dirty.has('server')) f.server.value = s.server_url || '';
     if (!dirty.has('name')) f.name.value = s.client_name || '';
 
@@ -88,10 +113,14 @@
 
     // Recorder
     el('lamp-rec').className = 'lamp' + (st.recording ? ' rec' : '');
-    el('v-rec').textContent = st.recording
+    // A marker-ended take looks exactly like one that timed out, so say so for a
+    // few seconds. Otherwise the only way to know the gesture landed is to go
+    // and look in the library.
+    const marked = st.seconds_since_marker != null && st.seconds_since_marker < 6;
+    el('v-rec').textContent = (st.recording
       ? 'recording · ' + st.current_note_count +
         (st.current_note_count === 1 ? ' note' : ' notes')
-      : 'idle';
+      : 'idle') + (marked ? ' · break marked' : '');
 
     // Server link
     const lampLink = el('lamp-link');
@@ -140,6 +169,9 @@
       min_notes: parseInt(f.minNotes.value, 10),
       min_seconds: parseFloat(f.minSeconds.value),
       device_match: f.device.value,
+      marker_enabled: f.markerOn.checked,
+      marker_note: parseInt(f.markerNote.value, 10),
+      marker_double_press_seconds: parseFloat(f.markerWindow.value),
       server_url: f.server.value,
       client_name: f.name.value,
     };

@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 from midi_memory.shared.midi.events import MidiEvent
-from midi_memory.shared.midi.smf import compute_stats, extract_notes, read_smf, write_smf
+from midi_memory.shared.midi.smf import (
+    compute_stats,
+    extract_notes,
+    extract_pedal,
+    read_smf,
+    write_smf,
+)
 
 
 def test_midi_file_round_trips(tmp_path):
@@ -61,6 +67,45 @@ def test_a_note_left_held_at_the_end_still_gets_a_duration():
     notes = extract_notes([MidiEvent(0.0, 0x90, 60, 100)])
     assert len(notes) == 1
     assert 0 < notes[0].duration < 1.0
+
+
+# -- pedal marks for the roll ------------------------------------------------
+def test_pedal_presses_are_reported_in_order():
+    events = [
+        MidiEvent(0.0, 0x90, 60, 90),
+        MidiEvent(0.5, 0xB0, 64, 127), MidiEvent(2.0, 0xB0, 64, 0),
+        MidiEvent(3.0, 0xB0, 64, 127), MidiEvent(4.5, 0xB0, 64, 0),
+    ]
+    assert extract_pedal(events) == [0.5, 3.0]
+
+
+def test_a_continuous_pedal_sweep_is_one_press():
+    """Half-pedalling keyboards stream CC64; a line per value would be a fence."""
+    events = [MidiEvent(0.1 * i, 0xB0, 64, value)
+              for i, value in enumerate([20, 50, 70, 90, 110, 127, 100, 80])]
+    assert extract_pedal(events) == [0.2], "the crossing into 'down', once"
+
+
+def test_the_pedal_can_be_pressed_again_after_it_comes_up():
+    events = [
+        MidiEvent(0.0, 0xB0, 64, 127), MidiEvent(1.0, 0xB0, 64, 30),
+        MidiEvent(1.2, 0xB0, 64, 100),
+    ]
+    assert extract_pedal(events) == [0.0, 1.2]
+
+
+def test_all_notes_off_releases_the_pedal_too():
+    events = [
+        MidiEvent(0.0, 0xB0, 64, 127),
+        MidiEvent(1.0, 0xB0, 123, 0),     # panic: everything up
+        MidiEvent(2.0, 0xB0, 64, 127),
+    ]
+    assert extract_pedal(events) == [0.0, 2.0]
+
+
+def test_a_take_with_no_pedal_has_no_marks():
+    assert extract_pedal([MidiEvent(0.0, 0x90, 60, 90),
+                          MidiEvent(1.0, 0x80, 60, 0)]) == []
 
 
 def test_all_notes_off_closes_everything():

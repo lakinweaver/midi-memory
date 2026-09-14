@@ -196,6 +196,27 @@ def extract_notes(
     return notes
 
 
+def extract_pedal(events: Iterable[MidiEvent]) -> list[float]:
+    """The moments the sustain pedal went down, for the piano roll to mark.
+
+    Only the transitions. A keyboard that streams continuous pedal position sends
+    a run of control changes on the way down, and drawing a line for each would
+    put a picket fence on the roll where the player pressed the pedal once.
+    """
+    down: list[float] = []
+    on = False
+    for event in sorted(events, key=lambda e: e.t):
+        if event.is_sustain_down:
+            if not on:
+                down.append(round(event.t, 4))
+            on = True
+        elif event.is_sustain_up:
+            on = False
+        elif event.kind == CONTROL_CHANGE and event.data1 == CC_ALL_NOTES_OFF:
+            on = False
+    return down
+
+
 FINGERPRINT_POINTS = 64
 
 

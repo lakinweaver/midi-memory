@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from midi_memory.shared.protocol import MIDI_FILENAME
-from midi_memory.shared.midi.smf import extract_notes, read_smf
+from midi_memory.shared.midi.smf import extract_notes, extract_pedal, read_smf
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -66,7 +66,8 @@ async def get_session_notes(request: Request, session_id: str) -> dict:
     if not midi_path.exists():
         raise HTTPException(status_code=404, detail="Recording file is missing")
 
-    notes = extract_notes(read_smf(midi_path))
+    events = read_smf(midi_path)
+    notes = extract_notes(events)
     return {
         "id": session_id,
         "name": session["name"],
@@ -74,6 +75,7 @@ async def get_session_notes(request: Request, session_id: str) -> dict:
         "lowest_note": session["lowest_note"],
         "highest_note": session["highest_note"],
         "notes": [n.to_row() for n in notes],
+        "pedal": extract_pedal(events),
     }
 
 

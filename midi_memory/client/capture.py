@@ -12,6 +12,7 @@ import time
 from typing import Optional
 
 from midi_memory.client.config import Settings
+from midi_memory.client.midi.marker import Decision, MarkerListener
 from midi_memory.client.midi.recorder import Recorder, SessionRecord, recover_orphans
 from midi_memory.client.midi.source import MidiSource, create_source
 from midi_memory.client.spool import Spool
@@ -38,6 +39,11 @@ class CaptureService:
             clock=time.monotonic,
             on_finalized=self._on_finalized,
         )
+        # The marker sits in front of the recorder rather than inside it: ending a
+        # take on a gesture is a decision about the stream, not about segmenting
+        # silence, which is all the recorder knows how to do.
+        self.marker = MarkerListener(settings)
+        self.marker_ended_at: Optional[float] = None
         self._tasks: list[asyncio.Task] = []
         self.started_at = time.monotonic()
 
@@ -67,7 +73,9 @@ class CaptureService:
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
         await self.source.aclose()
-        # Don't lose whatever was being played when the service went down.
+        # Don't lose whatever was being played when the service went down --
+        # including a press the marker was still deciding about.
+        self._dispatch(Decision(self.marker.drain()))
         record = self.recorder.finalize()
         if record is not None:
             log.info("Saved in-progress session %s during shutdown", record.id)
@@ -77,7 +85,7 @@ class CaptureService:
         while True:
             event: MidiEvent = await self.source.queue.get()
             try:
-                self.recorder.handle(event)
+                self._dispatch(self.marker.feed(event))
             except Exception:
                 log.exception("Failed to record MIDI event")
 
@@ -85,6 +93,9 @@ class CaptureService:
         while True:
             await asyncio.sleep(TICK_SECONDS)
             try:
+                # Before the idle check, so a press that turned out to be a note
+                # counts as activity rather than arriving just after the cut.
+                self._dispatch(Decision(self.marker.expire(time.monotonic())))
                 self.recorder.tick()
             except Exception:
                 log.exception("Recorder tick failed")
@@ -98,6 +109,23 @@ class CaptureService:
                 log.exception("Pruning uploaded sessions failed")
 
     # -- callbacks -----------------------------------------------------------
+    def _dispatch(self, decision: Decision) -> None:
+        for event in decision.record:
+            self.recorder.handle(event)
+        if decision.end_session:
+            self._end_on_marker()
+
+    def _end_on_marker(self) -> None:
+        # Stamped even when nothing was open, because the page shows this to
+        # confirm the gesture registered -- and "nothing happened" is the one
+        # case where the player most needs telling that it did.
+        self.marker_ended_at = time.monotonic()
+        if not self.recorder.is_recording:
+            log.info("Marker key pressed twice while idle; nothing to end")
+            return
+        log.info("Marker key ended session %s", self.recorder.current_id)
+        self.recorder.finalize()
+
     def _on_finalized(self, record: SessionRecord) -> None:
         try:
             self.spool.add(record)
@@ -128,6 +156,11 @@ class CaptureService:
             "current_note_count": self.recorder.current_note_count,
             "seconds_since_activity": round(self.recorder.seconds_since_activity(), 1),
             "idle_seconds": self.settings.idle_seconds,
+            "marker_note": self.settings.marker_note if self.settings.marker_enabled else None,
+            "seconds_since_marker": (
+                None if self.marker_ended_at is None
+                else round(time.monotonic() - self.marker_ended_at, 1)
+            ),
             "uptime_seconds": round(time.monotonic() - self.started_at),
             "queue_depth": self.source.queue.qsize(),
         }

@@ -30,6 +30,7 @@
 
   const state = {
     notes: [],
+    pedal: [],          // times the sustain pedal went down
     duration: 0,
     position: 0,
     playing: false,
@@ -101,8 +102,27 @@
       ctx2d.stroke();
     }
 
-    // The notes. The solid bar is how long the key was held; the faint tail is
-    // the extra ring from the sustain pedal, so a pedalled passage still reads.
+    // Sustain, marked the way a DAW marks it: a line where the pedal went down,
+    // rather than a tail on every note it happened to catch. The tails answered
+    // "how long did this ring", which is a question about the sound; the line
+    // answers "when did I pedal", which is the one you have while reading a roll.
+    // Broad and faint rather than fine and sharp: a pedal mark is background for
+    // the notes, so it wants width to be findable and little contrast to stay out
+    // of the way. A hairline bright enough to see would read as an event itself.
+    // Warmed most of the way from the cream toward the amber, so it belongs to
+    // the same performance as the notes rather than to the chrome around them.
+    ctx2d.lineWidth = 3;
+    for (const t of state.pedal) {
+      if (t > state.duration) continue;
+      const x = xOf(t);
+      ctx2d.strokeStyle = t <= state.position
+        ? 'rgba(236,196,155,.15)' : 'rgba(236,196,155,.05)';
+      ctx2d.beginPath();
+      ctx2d.moveTo(x, PAD_Y); ctx2d.lineTo(x, height - PAD_Y);
+      ctx2d.stroke();
+    }
+
+    // The notes: the bar is how long the key was held, and nothing else.
     for (const n of state.notes) {
       const x = xOf(n.s);
       const w = Math.max(2, xOf(n.s + n.d) - x);
@@ -110,14 +130,6 @@
       const h = Math.max(2.5, rowHeight - 1);
       const played = n.s <= state.position;
       const intensity = 0.30 + (n.v / 127) * 0.7;
-
-      const ring = (n.r || n.d) - n.d;
-      if (ring > 0.02) {
-        const tailW = Math.max(1, xOf(n.s + n.d + ring) - (x + w));
-        ctx2d.fillStyle = played
-          ? 'rgba(255,169,77,.16)' : 'rgba(232,145,63,.09)';
-        ctx2d.fillRect(x + w, y + h / 2 - 0.6, tailW, 1.2);
-      }
 
       ctx2d.fillStyle = played
         ? 'rgba(255,169,77,' + intensity.toFixed(2) + ')'
@@ -422,6 +434,7 @@
     try {
       const payload = await api('/api/sessions/' + data.id + '/notes');
       state.notes = payload.notes.sort((a, b) => a.s - b.s);
+      state.pedal = payload.pedal || [];
       state.duration = Math.max(
         0.5, ...state.notes.map(n => n.s + (n.r || n.d)), (data.duration_ms || 0) / 1000);
 

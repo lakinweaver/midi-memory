@@ -20,6 +20,11 @@ class SettingsUpdate(BaseModel):
     min_notes: Optional[int] = Field(default=None, ge=0, le=200)
     min_seconds: Optional[float] = Field(default=None, ge=0, le=120)
     device_match: Optional[str] = Field(default=None, max_length=100)
+    # A window under ~150ms is faster than two deliberate presses; over a couple
+    # of seconds it stops being a gesture and starts catching ordinary playing.
+    marker_enabled: Optional[bool] = Field(default=None)
+    marker_note: Optional[int] = Field(default=None, ge=0, le=127)
+    marker_double_press_seconds: Optional[float] = Field(default=None, ge=0.15, le=2.0)
     server_url: Optional[str] = Field(default=None, max_length=300)
     client_secret: Optional[str] = Field(default=None, max_length=300)
     client_name: Optional[str] = Field(default=None, max_length=40)

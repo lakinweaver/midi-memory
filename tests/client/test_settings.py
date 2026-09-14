@@ -56,9 +56,35 @@ def test_settings_survive_a_restart(settings):
     {"min_notes": -1},
     {"min_notes": 5000},
     {"min_seconds": -3},
+    {"marker_note": 128},            # outside MIDI's 0-127
+    {"marker_note": -1},
+    {"marker_double_press_seconds": 0.05},   # faster than two deliberate presses
+    {"marker_double_press_seconds": 30},     # would catch ordinary playing
 ])
 def test_nonsense_values_are_rejected(client, payload):
     assert client.put("/api/settings", json=payload).status_code == 422
+
+
+def test_the_marker_defaults_to_the_top_key_of_an_88(client):
+    settings = client.get("/api/settings").json()["settings"]
+    assert settings["marker_enabled"] is True
+    assert settings["marker_note"] == 108, "C8"
+    assert settings["marker_double_press_seconds"] == 0.5
+
+
+def test_changing_the_marker_reaches_the_running_listener(client):
+    """The listener reads settings live; a restart to change a key would be a trap."""
+    client.put("/api/settings", json={"marker_note": 21, "marker_enabled": False})
+
+    listener = client.app.state.service.marker
+    assert listener.settings.marker_note == 21
+    assert listener.settings.marker_enabled is False
+
+
+def test_turning_the_marker_off_is_saved(client):
+    """False is not None: it must not be mistaken for 'field omitted'."""
+    client.put("/api/settings", json={"marker_enabled": False})
+    assert client.get("/api/settings").json()["settings"]["marker_enabled"] is False
 
 
 def test_partial_updates_leave_other_settings_alone(client):
