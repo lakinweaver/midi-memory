@@ -326,6 +326,21 @@ All events are timestamped with `time.monotonic()` when received. On a Pi the
 USB-to-userspace jitter is well under a millisecond — far finer than matters here — and
 a single clock keeps recording, replay and crash recovery consistent.
 
+### The icon
+
+`brand/icon.svg` is the source: a placeholder mark, the app's ink ground with one amber
+record lamp. Replace it with a real logo and run
+
+```bash
+./scripts/render_icons.sh
+```
+
+which copies it and renders 512/180/32/16px PNGs into both apps' static directories. Those
+files are committed, so neither the Docker build nor the Pi install needs ImageMagick —
+only whoever changes the logo does. Pages link the SVG first and the PNGs as fallbacks,
+stamped with the file's mtime, so a new logo replaces a cached one rather than sitting
+behind it.
+
 ### Piano samples
 
 Playback uses a recorded piano rather than a synthesised tone. The samples are about

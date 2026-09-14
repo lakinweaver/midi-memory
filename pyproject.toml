@@ -51,8 +51,14 @@ include-package-data = false
     "static/css/*.css",
     "static/js/*.js",
     "static/fonts/*",
+    "static/brand/*",
 ]
-"midi_memory.client" = ["templates/*.html", "static/css/*.css", "static/js/*.js"]
+"midi_memory.client" = [
+    "templates/*.html",
+    "static/css/*.css",
+    "static/js/*.js",
+    "static/brand/*",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
