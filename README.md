@@ -32,7 +32,10 @@ Using this system, you can deploy multiple clients to as many keyboards as you w
 ## What the client does
 
 - **Records continuously** from a USB MIDI keyboard, with no interaction.
-- **Splits takes automatically** after a configurable silence (default 45s).
+- **Splits takes automatically** after a configurable silence (default 45s)
+- **Ends a take on command** — play one key twice quickly, at the pace of a double click, to close
+  the current idea and start the next one without waiting out the silence. Defaults to the top key
+  of an 88-key keyboard (C8).
 - **Ignores accidental key brushes** — by default, takes under 4 notes or 2 seconds are discarded.
 - **Survives power cuts** — every note is flushed to the client's disk as it is played, and an
   interrupted session is finalized on the next start.
@@ -230,6 +233,9 @@ and `.env.client.example`. All live variables can be placed in `.env`.
 | `MIDI_MEMORY_IDLE_SECONDS` | `45` | Silence that ends a session. |
 | `MIDI_MEMORY_MIN_NOTES` | `4` | Fewer notes than this is treated as an accident. |
 | `MIDI_MEMORY_MIN_SECONDS` | `2` | Shorter than this is treated as an accident. |
+| `MIDI_MEMORY_MARKER_ENABLED` | `true` | Whether playing one key twice quickly ends the take. |
+| `MIDI_MEMORY_MARKER_NOTE` | `108` | That key, as a MIDI note. 108 is C8, the top of an 88. |
+| `MIDI_MEMORY_MARKER_DOUBLE_PRESS_SECONDS` | `0.5` | How long you have between the two presses. |
 | `MIDI_MEMORY_DEVICE_MATCH` | *(empty)* | Record only from ports whose name contains this. |
 | `MIDI_MEMORY_MIDI_SOURCE` | `auto` | `auto`, `alsa`, `portable`, `mock` or `none`. |
 | `MIDI_MEMORY_KEEP_UPLOADED_DAYS` | `7` | Days to keep a local copy after the server confirms it. |
@@ -244,17 +250,33 @@ is layered on top of `.env` at startup.
 phrases, short enough that unrelated ideas do not end up in the same file. If your takes
 keep getting merged, lower it; if one idea keeps getting split in half, raise it.
 
+**Ending a take yourself.** The timeout cannot tell the end of one idea from a pause in
+the middle of it, so there is a way to say so: play the marker key twice, at the pace of a
+double click, and the take closes there. It is the answer to finishing something and
+wanting to start fresh without sitting still for 45 seconds first. The default is the top
+key of an 88 because almost nothing is played there — but if you do use it, or your
+keyboard stops short of it, any note will serve. A single press of that key is still an
+ordinary note and is recorded as one; only the pair is a signal, and neither press of the
+pair appears in the session.
+
 ## How it works
 
 ```
 client:  USB keyboard → MidiSource → asyncio queue → Recorder
                                                        ↓ events.jsonl, flushed per note
-                                                     idle timeout
+                                     idle timeout, or the marker key twice
                                                        ↓
                                             spool/<id>/ (session.mid + upload.json)
                                                        ↓ uploader, bearer secret, retries
 server:  POST /api/ingest/sessions → sessions/<id>/ + SQLite row → library UI (SSE)
 ```
+
+The marker sits in front of the recorder rather than inside it. Ending a take on a gesture
+is a decision about the stream; segmenting silence is all the recorder knows how to do. It
+also has to be in front for the presses to stay out of the recording at all — the recorder
+flushes every event to disk as it arrives, so a press is held back until the window passes
+and it is clear which it was. One press is released into the take as the note it turned out
+to be; two are discarded together.
 
 Each session is a directory, the same shape on both sides:
 
@@ -357,14 +379,16 @@ midi_memory/
              db.py         SQLite + search          clients.py  registry, secrets, status
              events.py     SSE pub/sub              samples.py  the sampled piano
              api/          sessions, tags, settings, status, clients, ingest
-  client/    main.py       the settings page        capture.py  source → recorder → spool
+  client/    main.py       the settings page        capture.py  source → marker → recorder
              spool.py      the local queue          uploader.py delivery, retries, heartbeat
-             settings_store.py                      midi/       recorder + backends
+             settings_store.py                      midi/       recorder, marker, backends
   tools/     ports.py (client-side), seed.py (server-side)
 ```
 
 The test suite mirrors it — `tests/shared`, `tests/server`, `tests/client` — and drives
 the recorder with a fake clock, so session splitting, held-note suppression and crash
-recovery are verified without waiting in real time or needing a keyboard. The uploader
+recovery are verified without waiting in real time or needing a keyboard. The marker tests
+drive the real capture service on that same clock, since what matters about the gesture is
+the join: that it ends the take *and* that neither press lands in a recording. The uploader
 tests run a real client against the real server app over httpx's ASGI transport, so the
 join between the two halves is tested with only the socket replaced.

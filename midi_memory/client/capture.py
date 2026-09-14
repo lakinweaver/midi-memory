@@ -1,4 +1,4 @@
-"""The always-on capture service: input source -> recorder -> spool -> uploader.
+"""The always-on capture service: input source -> marker -> recorder -> spool -> uploader.
 
 This is the whole job of a client. It owns no library and no database: a finished
 take is handed to the spool, and the uploader carries it to the server whenever
