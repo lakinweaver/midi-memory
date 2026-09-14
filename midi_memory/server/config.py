@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic_settings import SettingsConfigDict
 
-from midi_memory.shared.config import BaseAppSettings
+from midi_memory.shared.config import BaseAppSettings, make_dir
 
 
 class Settings(BaseAppSettings):
@@ -30,7 +30,7 @@ class Settings(BaseAppSettings):
         return self.data_dir / "midi-memory.db"
 
     def ensure_dirs(self) -> None:
-        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        make_dir(self.sessions_dir)
 
 
 @lru_cache(maxsize=1)

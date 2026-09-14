@@ -51,6 +51,35 @@ authenticate with their own secret rather than with the login.
 Recordings and the database land in `./data`. Back that up and you have backed up
 everything that matters — the recordings are plain files you can copy out at any time.
 
+#### On a NAS, set `PUID` and `PGID`
+
+The container writes to `/data`, which is your `./data` bind mount. On a plain Linux
+host the defaults are fine. On a NAS — Synology, unRAID, QNAP — that directory belongs
+to a real user there, with ACLs on top, and a container running as some invented uid
+cannot write to it. The symptom is the container starting and immediately exiting with
+
+```
+Cannot write to the data directory /data/sessions: /data belongs to uid 1026:gid 100
+and this is running as uid 10001:gid 10001 (midimemory).
+```
+
+Find the ids that own the folder and tell the container to use them:
+
+```bash
+id your-dsm-username        # e.g. uid=1026(lakin) gid=100(users)
+```
+
+```bash
+PUID=1026 PGID=100 docker compose up -d
+```
+
+or set them in the `environment:` block of `docker-compose.yml`, which is easier if you
+are driving this from Synology's Container Manager rather than a shell. The container
+starts as root only long enough to take ownership of `/data` and then drops to those
+ids; nothing but the entrypoint runs as root. If the ids already match, it does not
+touch ownership at all — which matters on network shares, where `chown` is often refused
+outright.
+
 ### 2. Register a client
 
 In the server's **Settings → Capture clients**, add a client and name it. It shows a
@@ -135,6 +164,7 @@ are different machines with a `.env` each, and there is nothing to confuse.
 | `MIDI_MEMORY_PASSWORD` | *(empty)* | Password for the library. Empty disables the login. |
 | `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
 | `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
+| `PUID` / `PGID` | `10001` | Docker only: who the server runs as, so a bind mount from a NAS share is writable. |
 
 **Client**
 

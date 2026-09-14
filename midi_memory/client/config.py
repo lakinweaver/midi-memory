@@ -13,7 +13,7 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
 
-from midi_memory.shared.config import BaseAppSettings
+from midi_memory.shared.config import BaseAppSettings, make_dir
 
 
 class Settings(BaseAppSettings):
@@ -86,8 +86,8 @@ class Settings(BaseAppSettings):
         return bool(self.server_url and self.client_secret)
 
     def ensure_dirs(self) -> None:
-        self.spool_dir.mkdir(parents=True, exist_ok=True)
-        self.uploaded_dir.mkdir(parents=True, exist_ok=True)
+        make_dir(self.spool_dir)
+        make_dir(self.uploaded_dir)
 
 
 @lru_cache(maxsize=1)
