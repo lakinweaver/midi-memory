@@ -86,17 +86,6 @@
     let retry = 1000;
     let wasDropped = false;
 
-    function label(client) {
-      if (client.state === 'offline') return 'offline';
-      if (client.state === 'recording') {
-        // The count is for the session in progress, so it holds steady once you
-        // stop playing -- the label is what makes that read as a tally, not a timer.
-        const n = Number(client.note_count) || 0;
-        return n ? 'recording · ' + n + (n === 1 ? ' note' : ' notes') : 'recording';
-      }
-      return client.connected ? 'idle' : 'no keyboard';
-    }
-
     function paint() {
       const empty = document.getElementById('clients-empty');
       if (clients.size === 0) {
@@ -104,9 +93,6 @@
         return;
       }
       if (empty) empty.remove();
-
-      // Drives the narrow-screen rule: see .clients-strip.multi in app.css.
-      strip.classList.toggle('multi', clients.size > 1);
 
       const wanted = new Set();
       for (const client of clients.values()) {
@@ -116,19 +102,15 @@
           node = document.createElement('div');
           node.className = 'readout client';
           node.dataset.client = client.id;
-          node.innerHTML = '<span class="lamp"></span><span class="who"></span>'
-                         + '<span class="val"></span>';
+          node.innerHTML = '<span class="lamp"></span><span class="stack">'
+                         + '<span class="val"></span><span class="who"></span></span>';
           strip.appendChild(node);
         }
-        const lamp = node.querySelector('.lamp');
-        lamp.className = 'lamp'
-          + (client.state === 'recording' ? ' rec'
-             : client.state === 'offline' ? '' : (client.connected ? ' on' : ''));
-        // With one client its name is noise; with several it is the whole point.
-        const who = node.querySelector('.who');
-        who.textContent = client.name;
-        who.hidden = clients.size < 2;
-        node.querySelector('.val').textContent = label(client);
+        // The wording and the lamp colour come from the server, so a readout
+        // painted here and one rendered into the page agree by construction.
+        node.querySelector('.lamp').className = 'lamp ' + (client.lamp || '');
+        node.querySelector('.val').textContent = client.label || '';
+        node.querySelector('.who').textContent = client.name || '';
         node.title = client.name + (client.port_name ? ' — ' + client.port_name : '');
       }
       strip.querySelectorAll('[data-client]').forEach((node) => {

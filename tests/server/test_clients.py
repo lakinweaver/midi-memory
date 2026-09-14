@@ -164,3 +164,58 @@ def test_client_management_requires_login(settings):
     with TestClient(create_app(settings)) as c:
         assert c.get("/api/clients").status_code == 401
         assert c.post("/api/clients", json={"name": "Upright"}).status_code == 401
+
+
+# -- what the header says ----------------------------------------------------
+@pytest.mark.parametrize("state,expected_label,expected_lamp", [
+    ({"state": "recording", "connected": True}, "recording", "rec"),
+    ({"state": "idle", "connected": True}, "idle", "on"),
+    ({"state": "idle", "connected": False}, "no keyboard", ""),
+    ({"state": "offline", "connected": False}, "offline", ""),
+    ({"state": "idle", "connected": True, "revoked": True}, "revoked", ""),
+])
+def test_the_wording_and_lamp_are_decided_on_the_server(state, expected_label,
+                                                        expected_lamp):
+    """Both the rendered page and the SSE update take these from one place, so
+    they cannot disagree and make the header flicker between them."""
+    from midi_memory.server.clients import describe
+
+    described = describe(state)
+    assert described["label"] == expected_label
+    assert described["lamp"] == expected_lamp
+
+
+def test_the_listing_carries_the_wording_for_the_page_to_render(client):
+    client.post("/api/clients", json={"name": "Upright"})
+
+    listed = client.get("/api/status").json()["clients"][0]
+    assert listed["label"] == "offline", "nothing has reported in yet"
+    assert listed["lamp"] == ""
+    assert listed["name"] == "Upright"
+
+
+def test_the_header_is_rendered_by_the_server_on_every_page(client):
+    """An empty strip waiting for the live stream is what made the header flash
+    through a state that was never true on each navigation."""
+    client.post("/api/clients", json={"name": "Upright"})
+    seed_id = "abcdef0123456789"
+    client.app.state.db.insert_session(
+        _a_session(seed_id), name="Something",
+    )
+
+    for path in ("/", f"/sessions/{seed_id}"):
+        html = client.get(path).text
+        assert 'class="clients-strip"' in html
+        assert "Upright" in html, f"{path} renders the client, not a placeholder"
+        assert "no capture clients" not in html
+
+
+def _a_session(session_id: str):
+    from datetime import datetime, timedelta, timezone
+
+    from midi_memory.shared.protocol import SessionUpload
+
+    started = datetime.now(timezone.utc)
+    return SessionUpload(id=session_id, started_at=started,
+                         ended_at=started + timedelta(seconds=4), duration_ms=4000,
+                         event_count=8, note_count=4)

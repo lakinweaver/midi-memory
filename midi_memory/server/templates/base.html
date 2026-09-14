@@ -13,10 +13,23 @@
   <header class="topbar">
     <a href="/" class="wordmark">MIDI&nbsp;<b>Memory</b> <span>always listening</span></a>
     <div class="console">
-      <!-- One readout per registered client. With a single client -- which is
-           what most setups are -- this reads exactly like a single device. -->
+      <!-- One readout per registered client, rendered here rather than left for
+           JavaScript to fill in. The live stream takes a moment to connect, and
+           an empty strip in the meantime made the header flicker through a state
+           that was never true every time you changed page. -->
       <div class="clients-strip" id="clients-strip">
+        {% for client in clients %}
+        <div class="readout client" data-client="{{ client.id }}"
+             title="{{ client.name }}{% if client.port_name %} — {{ client.port_name }}{% endif %}">
+          <span class="lamp {{ client.lamp }}"></span>
+          <span class="stack">
+            <span class="val">{{ client.label }}</span>
+            <span class="who">{{ client.name }}</span>
+          </span>
+        </div>
+        {% else %}
         <span class="readout muted" id="clients-empty">no capture clients</span>
+        {% endfor %}
       </div>
       <button class="icon-btn cog" id="open-settings" title="Settings"
               aria-label="Settings" aria-haspopup="dialog">

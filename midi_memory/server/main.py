@@ -146,7 +146,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return RedirectResponse("/", status_code=303)
         return templates.TemplateResponse(
             request, "session.html",
-            {"session": session, "all_tags": request.app.state.db.list_tags()},
+            {"session": session,
+             "all_tags": request.app.state.db.list_tags(),
+             "clients": request.app.state.clients.listing()},
         )
 
     return app

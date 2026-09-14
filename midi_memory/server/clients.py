@@ -167,7 +167,7 @@ class ClientRegistry:
 
     def listing(self) -> list[dict]:
         """Every registered client, with its live state folded in."""
-        return [{**client, **self.status(client["id"])}
+        return [describe({**client, **self.status(client["id"])})
                 for client in self.db.list_clients()]
 
     def count(self) -> int:
@@ -181,7 +181,31 @@ class ClientRegistry:
         if client is None:
             return
         self.bus.publish("client_status", client_id=client_id,
-                         name=client["name"], **self.status(client_id))
+                         **describe({**client, **self.status(client_id)}))
+
+
+def describe(client: dict) -> dict:
+    """Add the words and the lamp colour the UI shows for this client.
+
+    Derived here rather than in the browser so the page rendered by the server
+    and the page updated over SSE cannot disagree -- which is what made the
+    header flicker between states while you moved around the app.
+    """
+    revoked = client.get("revoked")
+    state = client.get("state", "offline")
+    connected = client.get("connected", False)
+
+    if revoked:
+        label, lamp = "revoked", ""
+    elif state == "offline":
+        label, lamp = "offline", ""
+    elif state == "recording":
+        label, lamp = "recording", "rec"
+    elif connected:
+        label, lamp = "idle", "on"
+    else:
+        label, lamp = "no keyboard", ""
+    return {**client, "label": label, "lamp": lamp}
 
 
 # -- helpers -----------------------------------------------------------------

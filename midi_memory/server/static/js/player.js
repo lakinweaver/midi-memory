@@ -241,8 +241,12 @@
   }
 
   function paintTransport() {
-    el.iconPlay.hidden = state.playing;
-    el.iconPause.hidden = !state.playing;
+    // toggleAttribute, not .hidden: these are <svg> elements, and `hidden` is an
+    // HTMLElement property. Assigning it on an SVGElement sets a plain JavaScript
+    // property that no attribute and no stylesheet ever sees, so the icon never
+    // changed and the button claimed "play" the whole way through a recording.
+    el.iconPlay.toggleAttribute('hidden', state.playing);
+    el.iconPause.toggleAttribute('hidden', !state.playing);
     el.play.setAttribute('aria-label', state.playing ? 'Pause' : 'Play');
   }
 
