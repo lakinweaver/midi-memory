@@ -4,10 +4,14 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .env
+.env.server
+.env.client
 data/
+data-client/
 # Piano samples and the manifest describing them are generated, not source:
 # fetched by scripts/fetch_samples.py or the Download button in Settings.
-app/static/audio/*.mp3
-app/static/audio/*.ogg
-app/static/audio/manifest.json
+midi_memory/server/static/audio/*.mp3
+midi_memory/server/static/audio/*.ogg
+midi_memory/server/static/audio/manifest.json
 .DS_Store
+build/

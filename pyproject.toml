@@ -35,9 +35,24 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["midi_memory*"]
 
+[tool.setuptools]
+# Only the globs below ship. Left on, setuptools also sweeps in whatever the
+# working tree happens to hold, which for the piano samples means the wheel
+# depends on whether the person building it had run the downloader.
+include-package-data = false
+
 [tool.setuptools.package-data]
-"midi_memory.server" = ["templates/*.html", "static/**/*"]
-"midi_memory.client" = ["templates/*.html", "static/**/*"]
+# static/audio is deliberately absent: the piano samples are generated, not
+# source, so a wheel built on a machine that happens to have them would differ
+# from one built on a machine that does not. They are fetched at image build
+# time, by the installer, or from the Settings dialog.
+"midi_memory.server" = [
+    "templates/*.html",
+    "static/css/*.css",
+    "static/js/*.js",
+    "static/fonts/*",
+]
+"midi_memory.client" = ["templates/*.html", "static/css/*.css", "static/js/*.js"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

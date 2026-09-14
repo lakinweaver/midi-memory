@@ -1,0 +1,21 @@
+# The library server. `docker compose up -d`, then open http://<this-host>:8080
+# and add a capture client from Settings.
+services:
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: midi-memory-server
+    container_name: midi-memory
+    ports:
+      - "8080:8080"
+    volumes:
+      # Recordings and the database. Back this up and you have backed up
+      # everything that matters.
+      - ./data:/data
+    environment:
+      # Set a password to put the library behind a login. Left empty, anyone on
+      # the network can open it -- which is often what you want at home, and
+      # never what you want if this is reachable from outside it.
+      MIDI_MEMORY_PASSWORD: "${MIDI_MEMORY_PASSWORD:-}"
+    restart: unless-stopped

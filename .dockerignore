@@ -1,0 +1,18 @@
+.git
+.gitignore
+.venv
+data
+data-client
+.env
+.env.*
+*.egg-info
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+tests
+scripts
+docker-compose.yml
+# Samples are downloaded during the build rather than copied from a working
+# tree that may or may not have them.
+midi_memory/server/static/audio

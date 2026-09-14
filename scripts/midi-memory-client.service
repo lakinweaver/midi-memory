@@ -1,7 +1,7 @@
-# Installed to /etc/systemd/system/midi-memory.service by scripts/install_pi.sh,
-# which substitutes the @PLACEHOLDER@ values.
+# Installed to /etc/systemd/system/midi-memory-client.service by
+# scripts/install_client_pi.sh, which substitutes the @PLACEHOLDER@ values.
 [Unit]
-Description=MIDI Memory - always-on MIDI notepad
+Description=MIDI Memory capture client - always-on MIDI recorder
 Documentation=https://github.com/
 After=network-online.target sound.target
 Wants=network-online.target
@@ -13,7 +13,7 @@ Group=@USER@
 SupplementaryGroups=audio
 WorkingDirectory=@APP_DIR@
 EnvironmentFile=@APP_DIR@/.env
-ExecStart=@APP_DIR@/.venv/bin/python -m app
+ExecStart=@APP_DIR@/.venv/bin/midi-memory-client
 
 Restart=always
 RestartSec=3
@@ -21,7 +21,7 @@ RestartSec=3
 StartLimitIntervalSec=0
 
 # The recorder must survive a reboot without losing the take in progress; give
-# it time to finalise the open session.
+# it time to finalise the open session into the spool.
 KillSignal=SIGINT
 TimeoutStopSec=20
 
@@ -33,7 +33,7 @@ ReadWritePaths=@DATA_DIR@ @APP_DIR@
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=midi-memory
+SyslogIdentifier=midi-memory-client
 
 [Install]
 WantedBy=multi-user.target

@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 #
-# Install MIDI Memory as a system service on a Raspberry Pi.
+# Install the MIDI Memory capture client as a system service on a Raspberry Pi.
 #
 #   git clone <repo> ~/midi-memory && cd ~/midi-memory
-#   ./scripts/install_pi.sh
+#   ./scripts/install_client_pi.sh
+#
+# This installs the recorder only. The library lives on the server, which runs
+# somewhere else -- see docker-compose.yml. Once this finishes, open the address
+# it prints and paste in the server address and the client secret.
 #
 # Safe to re-run: it upgrades an existing install in place.
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SERVICE_NAME="midi-memory"
-DATA_DIR="${MIDI_MEMORY_DATA_DIR:-/var/lib/midi-memory}"
+SERVICE_NAME="midi-memory-client"
+DATA_DIR="${MIDI_MEMORY_DATA_DIR:-/var/lib/midi-memory-client}"
 RUN_USER="${SUDO_USER:-$USER}"
+PORT="${MIDI_MEMORY_PORT:-8081}"
 
 say()  { printf '\n\033[1;33m==>\033[0m %s\n' "$*"; STEP="$*"; }
 warn() { printf '\033[1;31m!!\033[0m %s\n' "$*" >&2; }
@@ -21,8 +26,8 @@ on_error() {
   local code=$?
   warn "Install failed during: ${STEP} (exit ${code}, line ${BASH_LINENO[0]})"
   warn "Nothing is half-installed that re-running will not fix:"
-  warn "    ./scripts/install_pi.sh"
-  if [[ "$STEP" == *package* || "$STEP" == *virtualenv* || "$STEP" == *samples* ]]; then
+  warn "    ./scripts/install_client_pi.sh"
+  if [[ "$STEP" == *package* || "$STEP" == *virtualenv* ]]; then
     warn "That step needs the network. If this Pi is on flaky wifi, check with:"
     warn "    ping -c3 deb.debian.org && ping -c3 pypi.org"
   fi
@@ -32,7 +37,8 @@ trap on_error ERR
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   warn "This installer targets Linux (Raspberry Pi OS). For local development run:"
-  warn "    python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' && .venv/bin/python -m app"
+  warn "    python3 -m venv .venv && .venv/bin/pip install -e '.[dev,client]'"
+  warn "    .venv/bin/python -m midi_memory.client"
   exit 1
 fi
 
@@ -46,7 +52,7 @@ if [[ $EUID -eq 0 ]]; then
   if [[ -n "${SUDO_USER:-}" ]]; then
     warn "Run it as yourself instead:"
     warn "    exit  # leave this root shell, or drop the sudo"
-    warn "    cd ${APP_DIR} && ./scripts/install_pi.sh"
+    warn "    cd ${APP_DIR} && ./scripts/install_client_pi.sh"
   fi
   exit 1
 fi
@@ -99,20 +105,14 @@ cd "$APP_DIR"
 # Generous retries: a Pi on wifi drops PyPI connections far more than a laptop.
 PIP_NET=(--timeout 60 --retries 5)
 ./.venv/bin/pip install "${PIP_NET[@]}" --quiet --upgrade pip
-if ! ./.venv/bin/pip install "${PIP_NET[@]}" -e '.[alsa]'; then
+if ! ./.venv/bin/pip install "${PIP_NET[@]}" -e '.[client,alsa]'; then
   warn "Could not install dependencies (see the pip output above)."
   warn "This is almost always a network problem; re-run the script to resume."
   exit 1
 fi
 
-if [[ "${SKIP_SAMPLES:-0}" == "1" ]]; then
-  say "Skipping piano samples (SKIP_SAMPLES=1); the player will use its synth"
-else
-  say "Fetching piano samples for browser playback (optional, ~2 MB)"
-  ./.venv/bin/python scripts/fetch_samples.py || \
-    warn "Samples unavailable; the player falls back to its built-in synth. \
-Re-run scripts/fetch_samples.py later, or set SKIP_SAMPLES=1 to stop trying."
-fi
+# No piano samples here: the client has no player. That is two megabytes and one
+# flaky-network step this install does not need.
 
 # ------------------------------------------------------------------ storage --
 say "Preparing the data directory at $DATA_DIR"
@@ -130,17 +130,25 @@ fi
 
 if [[ ! -f .env ]]; then
   say "Creating .env"
+  # The settings page can change the server address and holds this client's
+  # secret, so it gets a password even though it only serves the LAN.
   PASSWORD="$(head -c 9 /dev/urandom | base64 | tr -d '/+=' | head -c 12)"
   cat > .env <<ENVEOF
 MIDI_MEMORY_HOST=0.0.0.0
-MIDI_MEMORY_PORT=8080
+MIDI_MEMORY_PORT=$PORT
 MIDI_MEMORY_PASSWORD=$PASSWORD
 MIDI_MEMORY_DATA_DIR=$DATA_DIR
+
+# Filled in from the settings page, or set here if you prefer.
+MIDI_MEMORY_SERVER_URL=${MIDI_MEMORY_SERVER_URL:-}
+MIDI_MEMORY_CLIENT_SECRET=${MIDI_MEMORY_CLIENT_SECRET:-}
+
 MIDI_MEMORY_IDLE_SECONDS=45
 MIDI_MEMORY_MIN_NOTES=4
 MIDI_MEMORY_MIN_SECONDS=2
 MIDI_MEMORY_DEVICE_MATCH=
 MIDI_MEMORY_MIDI_SOURCE=auto
+MIDI_MEMORY_KEEP_UPLOADED_DAYS=7
 ENVEOF
   chmod 600 .env
   GENERATED_PASSWORD="$PASSWORD"
@@ -150,10 +158,19 @@ fi
 
 # -------------------------------------------------------------------- service --
 say "Installing the systemd service"
+# An install upgrading from before the server/client split has the old unit
+# still running and still recording. Stop it, or two recorders fight over the
+# same keyboard port.
+if systemctl list-unit-files 'midi-memory.service' 2>/dev/null | grep -q midi-memory.service; then
+  say "Removing the pre-split midi-memory service"
+  sudo systemctl disable --now midi-memory.service || true
+  sudo rm -f /etc/systemd/system/midi-memory.service
+fi
+
 sed -e "s|@APP_DIR@|$APP_DIR|g" \
     -e "s|@DATA_DIR@|$DATA_DIR|g" \
     -e "s|@USER@|$RUN_USER|g" \
-    scripts/midi-memory.service | sudo tee "/etc/systemd/system/$SERVICE_NAME.service" >/dev/null
+    scripts/midi-memory-client.service | sudo tee "/etc/systemd/system/$SERVICE_NAME.service" >/dev/null
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
@@ -168,7 +185,7 @@ if ! systemctl is-active --quiet "$SERVICE_NAME"; then
 fi
 
 PORT="$(grep -E '^MIDI_MEMORY_PORT=' .env | cut -d= -f2)"
-PORT="${PORT:-8080}"
+PORT="${PORT:-8081}"
 HEALTH=""
 for _ in 1 2 3 4 5; do
   if HEALTH="$(curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/healthz" 2>/dev/null)"; then
@@ -184,17 +201,24 @@ fi
 
 # ----------------------------------------------------------------------- done --
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+URL="http://${IP:-<pi-address>}:${PORT}/"
 
-say "MIDI Memory is running and answering on port ${PORT}"
-echo "  Open:     http://${IP:-<pi-address>}:${PORT}/"
-echo "  Hostname: http://$(hostname).local:${PORT}/"
+say "The capture client is running and recording"
+echo
+echo "  One thing left: point it at your server."
+echo
+echo "    1. Open the MIDI Memory server and go to Settings -> Capture clients."
+echo "    2. Add a client, name it, and copy the secret it shows you."
+echo "    3. Open ${URL} and paste the server address and that secret."
+echo
 if [[ -n "${GENERATED_PASSWORD:-}" ]]; then
+  echo "  This page's password: ${GENERATED_PASSWORD}   (generated; change it in $APP_DIR/.env)"
   echo
-  echo "  Password: ${GENERATED_PASSWORD}   (generated; change it in $APP_DIR/.env)"
 fi
+echo "  Also at: http://$(hostname).local:${PORT}/"
 echo
 echo "  MIDI ports seen right now:"
-./.venv/bin/python -m app.tools.ports 2>&1 | sed 's/^/    /'
+./.venv/bin/python -m midi_memory.tools.ports 2>&1 | sed 's/^/    /'
 echo
 echo "  Logs:     journalctl -u $SERVICE_NAME -f"
 echo "  Restart:  sudo systemctl restart $SERVICE_NAME"

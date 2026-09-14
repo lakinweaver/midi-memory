@@ -4,10 +4,21 @@ An always-on notepad for the ideas you play and forget.
 
 Leave a Raspberry Pi connected to your digital piano and it listens continuously.
 Anything you play is captured, and when you stop for a while the take is filed as its
-own **session**. Later you browse, search, tag, replay and download them from a web
-page on your home network. There is no record button — that is the whole point.
+own **session** and sent to a server on your network, where you browse, search, tag,
+replay and download it. There is no record button — that is the whole point.
 
-<!-- screenshots live in docs/ -->
+It comes in two halves:
+
+| | Runs on | Job |
+| --- | --- | --- |
+| **Server** | Anything with Docker | The library: browse, search, play back, download. Registers clients and receives their recordings. |
+| **Client** | A Pi beside the instrument | Records. Spools takes locally and uploads them. One settings page is its entire UI. |
+
+They are separate because they want different machines. Capture has to be cheap,
+headless and within a cable's reach of the piano; the library wants to live on
+something you actually back up. Splitting them also means the Pi keeps recording
+when the server is down, and a second piano is a second Pi rather than a second
+install.
 
 ## What it does
 
@@ -17,39 +28,50 @@ page on your home network. There is no record button — that is the whole point
 - **Ignores accidental key brushes** — takes under 4 notes or 2 seconds are discarded.
 - **Survives power cuts** — every note is flushed to disk as it is played, and an
   interrupted session is finalised on the next start.
-- **Browse and search** by name, tag, free text, date range, length and starred status.
+- **Survives the server being down** — takes wait in a local spool and go up, in the
+  order they were played, as soon as it is back.
+- **Browse and search** by name, tag, free text, date range, length, starred status,
+  and which client recorded it.
 - **Play back in the browser** with a piano roll, a sampled piano, loop and speed control.
 - **Download** any session as a standard `.mid` file.
 
-## Quick start (development, on any machine)
+## Setting it up
+
+### 1. The server
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/python scripts/fetch_samples.py     # optional: piano samples (or use the UI)
-cp .env.example .env
-.venv/bin/python -m app
+git clone <your-repo-url> midi-memory && cd midi-memory
+docker compose up -d
 ```
 
-Open <http://localhost:8080>. With no MIDI hardware present the app runs fine and simply
-records nothing. To see it working end to end, set `MIDI_MEMORY_MIDI_SOURCE=mock` in
-`.env` and it will play itself, or generate a library of demo takes:
+Open `http://<that-machine>:8080`. To require a password, set `MIDI_MEMORY_PASSWORD`
+before bringing it up; capture clients are unaffected either way, since they
+authenticate with their own secret rather than with the login.
+
+Recordings and the database land in `./data`. Back that up and you have backed up
+everything that matters — the recordings are plain files you can copy out at any time.
+
+### 2. Register a client
+
+In the server's **Settings → Capture clients**, add a client and name it. It shows a
+secret **once**; only its hash is stored, so it cannot be shown again. Losing it costs
+one click on "New secret".
+
+### 3. The client
 
 ```bash
-.venv/bin/python -m app.tools.seed --count 14
+git clone <your-repo-url> ~/midi-memory && cd ~/midi-memory
+./scripts/install_client_pi.sh
 ```
 
-## Install on a Raspberry Pi
+The installer sets up the virtualenv, installs the system packages and ALSA bits,
+creates `/var/lib/midi-memory-client`, generates a password for the client's own page,
+and installs a systemd service so recording resumes on every boot. It is safe to re-run
+to upgrade, and it removes the pre-split `midi-memory` service if it finds one.
 
-```bash
-git clone <your-repo-url> ~/midi-memory
-cd ~/midi-memory
-./scripts/install_pi.sh
-```
-
-The installer sets up the virtualenv, installs system packages, creates `/var/lib/midi-memory`,
-generates a random password into `.env`, and installs and starts a systemd service so
-recording resumes automatically on every boot. It is safe to re-run to upgrade.
+Then open the address it prints — `http://<pi>:8081` — and paste in the server address
+and the secret. That is the only configuration either half needs; everything else has a
+working default.
 
 **Run it as yourself, not with `sudo`.** The script calls `sudo` for the handful of
 steps that need it (apt, systemd, `/var/lib`). Running the whole thing as root creates
@@ -57,67 +79,81 @@ the virtualenv and `.env` owned by root inside your home directory, and the serv
 which runs as you — then cannot read them. If you already did this, the script detects
 and repairs the ownership on the next run.
 
-If the install fails partway — a flaky Pi wifi connection timing out against apt or
-PyPI is the usual cause — just re-run it. The script is idempotent and resumes: packages
-already installed are skipped, and samples already downloaded are not fetched again. To
-skip the sample download entirely, `SKIP_SAMPLES=1 ./scripts/install_pi.sh`.
+If the install fails partway — flaky Pi wifi timing out against apt or PyPI is the usual
+cause — just re-run it. It is idempotent and resumes.
 
-**Why a virtualenv on a single-purpose Pi?** Not to isolate from other apps — to isolate
-from Debian's. Raspberry Pi OS marks the system Python as externally managed (PEP 668),
-so `pip install` into it is refused without `--break-system-packages`, and overriding
-that can break `apt`'s own Python tooling. The venv costs about 15 MB.
+### Upgrading an existing single-box install
 
-### "Permission denied" on .env
+The server keeps the old data directory layout exactly, so point it at your existing
+`data/` and the whole library is there. The database gains one nullable column;
+recordings made before the split simply have no client to show, which is invisible
+until you have more than one client anyway.
 
-An earlier `sudo ./scripts/install_pi.sh` left root-owned files behind. Reclaim them and
-re-run without sudo:
+## Development, on any machine
 
 ```bash
-sudo chown -R $USER:$USER ~/midi-memory
-cd ~/midi-memory && ./scripts/install_pi.sh
+python3 -m venv .venv
+.venv/bin/pip install -e '.[dev,server,client]'
+.venv/bin/python scripts/fetch_samples.py     # optional: piano samples (or use the UI)
+cp .env.server.example .env.server
+cp .env.client.example .env.client
 ```
 
-### If the web interface will not load
+Then run the two halves in separate terminals:
 
 ```bash
-systemctl status midi-memory --no-pager     # is it running at all?
-journalctl -u midi-memory -n 40 --no-pager  # why did it stop?
-curl -sS localhost:8080/healthz             # does it answer locally?
-ss -lntp | grep 8080                        # is it listening on all interfaces?
-~/midi-memory/.venv/bin/python -c "import fastapi, uvicorn, mido, alsa_midi"
+.venv/bin/python -m midi_memory.server    # http://localhost:8080
+.venv/bin/python -m midi_memory.client    # http://localhost:8081
 ```
 
-If `curl localhost` works but another machine cannot reach it, the app is fine and the
-problem is the network path — check you are using the Pi's LAN address (`hostname -I`)
-rather than `raspberrypi.local`, which needs mDNS working on the client.
+They share a directory here, which they never do in production, so each also reads its
+own `.env.server` / `.env.client` on top of the shared `.env`. Later files win.
+
+With no MIDI hardware the client runs fine and records nothing. To see the whole thing
+work end to end, set `MIDI_MEMORY_MIDI_SOURCE=mock` in `.env.client` and it plays itself.
+To fill the library without a client at all:
 
 ```bash
-journalctl -u midi-memory -f          # watch it work
-sudo systemctl restart midi-memory    # after changing .env
-.venv/bin/python -m app.tools.ports   # what MIDI ports can it see?
+.venv/bin/python -m midi_memory.tools.seed --count 14
+```
+
+```bash
+.venv/bin/python -m pytest                        # 137 tests
+.venv/bin/python -m midi_memory.tools.ports       # what MIDI ports can this machine see?
 ```
 
 ## Configuration
 
-Everything is set through environment variables or `.env` — see `.env.example`.
+Everything is set through environment variables or `.env` — see `.env.server.example`
+and `.env.client.example`. Both halves answer to `MIDI_MEMORY_*`: on a real install they
+are different machines with a `.env` each, and there is nothing to confuse.
 
-The settings most worth tuning are also editable from the web UI, behind the cogwheel in
-the header: idle timeout, the minimum-size thresholds, and the device filter. Those changes take effect immediately —
-on the next recorded note, with no restart — and are saved to `settings.json` in the data
-directory, which is layered on top of `.env` at startup. Everything else (port, password,
-data directory, which MIDI backend) is shown read-only there, since changing it needs a
-restart. "Reset to .env" discards the overrides.
+**Server**
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `MIDI_MEMORY_PASSWORD` | *(empty)* | Shared password for the web UI. Empty disables login. |
+| `MIDI_MEMORY_PASSWORD` | *(empty)* | Password for the library. Empty disables the login. |
+| `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
+| `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
+
+**Client**
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `MIDI_MEMORY_SERVER_URL` | *(empty)* | Base URL of the server. Settable from the client's page. |
+| `MIDI_MEMORY_CLIENT_SECRET` | *(empty)* | Issued by the server. Settable from the client's page. |
 | `MIDI_MEMORY_IDLE_SECONDS` | `45` | Silence that ends a session. |
 | `MIDI_MEMORY_MIN_NOTES` | `4` | Fewer notes than this is treated as an accident. |
 | `MIDI_MEMORY_MIN_SECONDS` | `2` | Shorter than this is treated as an accident. |
 | `MIDI_MEMORY_DEVICE_MATCH` | *(empty)* | Record only from ports whose name contains this. |
-| `MIDI_MEMORY_DATA_DIR` | `data` | Where recordings and the database live. |
-| `MIDI_MEMORY_PORT` | `8080` | HTTP port. |
 | `MIDI_MEMORY_MIDI_SOURCE` | `auto` | `auto`, `alsa`, `portable`, `mock` or `none`. |
+| `MIDI_MEMORY_KEEP_UPLOADED_DAYS` | `7` | Days to keep a local copy after the server confirms it. |
+| `MIDI_MEMORY_PORT` | `8081` | HTTP port for the settings page. |
+
+The recording settings are also editable from the client's page, along with the server
+address and secret. Those changes take effect immediately — on the next recorded note,
+with no restart — and are saved to `settings.json` in the client's data directory, which
+is layered on top of `.env` at startup.
 
 **Tuning the idle timeout.** 45 seconds suits most people: long enough to think between
 phrases, short enough that unrelated ideas do not end up in the same file. If your takes
@@ -126,19 +162,47 @@ keep getting merged, lower it; if one idea keeps getting split in half, raise it
 ## How it works
 
 ```
-USB keyboard → MidiSource → asyncio queue → Recorder → events.jsonl (flushed per note)
-                                               ↓ idle timeout
-                                         session.mid + SQLite row → web UI (SSE)
+client:  USB keyboard → MidiSource → asyncio queue → Recorder
+                                                       ↓ events.jsonl, flushed per note
+                                                     idle timeout
+                                                       ↓
+                                            spool/<id>/ (session.mid + upload.json)
+                                                       ↓ uploader, bearer secret, retries
+server:  POST /api/ingest/sessions → sessions/<id>/ + SQLite row → library UI (SSE)
 ```
 
-Each session is a directory under `$DATA_DIR/sessions/<id>/`:
+Each session is a directory, the same shape on both sides:
 
 - `events.jsonl` — the source of truth, appended and flushed as you play.
 - `session.mid` — a standard type-0 MIDI file, rendered when the session closes.
-- `meta.json` — start time and device, so crash recovery can rebuild the rest.
+- `upload.json` — the metadata the server files it under. Written last, which is what
+  marks the take as finished and ready to send.
 
-Metadata (names, tags, notes, stars) lives in SQLite; the recordings themselves are
-plain files you can copy out at any time.
+The client computes every statistic — duration, note range, average velocity, the pitch
+strip the library draws — because it has just parsed the MIDI to render the file anyway.
+The server stores what it is given. Metadata (names, tags, notes, stars) lives in SQLite
+on the server; the recordings themselves stay plain files.
+
+### The spool
+
+A take leaves the client only once the server has said, in so many words, that it has
+it. If the server is down the spool simply grows, and the client's page says how many
+takes are waiting; when it comes back they go up oldest first, so an evening's work
+arrives in the order it was played.
+
+An upload whose acknowledgement went missing is answered with `duplicate` rather than
+filed twice, so a retry is always safe. After a successful upload the local copy is kept
+for `KEEP_UPLOADED_DAYS` — a few megabytes of insurance against a mistake at the other
+end.
+
+### Client secrets
+
+A client secret is 256 bits from the system CSPRNG, and only its SHA-256 hash is stored.
+That is deliberately a fast hash rather than bcrypt: there is no dictionary to run
+against a random token, nothing for a slow KDF to buy, and it lets the hash be an indexed
+column so authenticating an upload is one lookup. Revoking a client stops its uploads
+without disturbing the recordings it already made; deleting one is only allowed when it
+has none.
 
 ### MIDI backends
 
@@ -158,34 +222,24 @@ a single clock keeps recording, replay and crash recovery consistent.
 ### Piano samples
 
 Playback uses a recorded piano rather than a synthesised tone. The samples are about
-2 MB and are deliberately not in the repository, so a fresh clone has none and playback
-falls back to a built-in tone that is fine for checking notes but poor for judging an
-idea.
+2 MB and are deliberately not in the repository. The Docker image bakes them in at build
+time, so a running server never depends on the internet; the Settings dialog has a
+Download button as a fallback, and `scripts/fetch_samples.py` does the same from the
+command line. Either is safe to re-run — files already present are skipped.
 
-Rather than leaving that as a setup step to remember, the app reports it and fixes it
-itself: the settings dialog shows how many samples are installed, with a Download button
-when any are missing. The manifest that lists them is generated too, so if it goes
-missing while the audio is still there — restored from a backup, copied by hand — it is
-rebuilt from what is on disk at startup. `scripts/fetch_samples.py` does the same thing from the command
-line, and both share one implementation in `app/samples.py`. Either is safe to re-run —
-files already present are skipped, so an interrupted download resumes.
-
-The sample bytes are fetched as soon as a session page opens, while decoding waits for
-the user gesture that opens audio, so pressing play costs a decode rather than a
-download — about 140 ms in practice.
+Capture clients do not get them at all. They have no player, so that is two megabytes
+and one flaky-network step the Pi install does not need.
 
 ### Why the library is one request
 
 Each row shows a pitch strip: a thumbnail of what was played. Building those from the
 full note lists meant one HTTP request per visible row — 41 requests and about 70 KB to
-draw a page of 40, which browsers serialise into several waves. On a Pi over wifi that is
-exactly as slow as it sounds.
+draw a page of 40, which browsers serialise into several waves.
 
-Instead a compact fingerprint is computed once when the session is saved — the loudest
-note from each of 64 time buckets, quantised to bytes — stored in the database, and sent
-inline with the listing. One request, about 18 KB. Recordings made before this existed
-are backfilled in the background at startup, newest first, since those are the ones on
-screen.
+Instead a compact fingerprint is computed once, on the client, when the session is
+finalised — the loudest note from each of 64 time buckets, quantised to bytes — uploaded
+with the take, and sent inline with the listing. One request, about 18 KB. Client names
+ride along the same way, joined into the query rather than fetched per row.
 
 ### Sustain pedal
 
@@ -196,35 +250,34 @@ you played.
 
 ## Security
 
-This is built for a device on your own network: one shared password, a signed cookie,
-and plain HTTP. That is proportionate to a Pi behind a home router — but it is **not**
-enough to expose to the internet. If you need that, put it behind a reverse proxy with
-TLS and real authentication.
+This is built for your own network: one password on the library, a signed cookie, a
+per-client bearer secret, and plain HTTP. That is proportionate to a home router — but it
+is **not** enough to expose to the internet. If you need that, put it behind a reverse
+proxy with TLS and real authentication.
 
-## Development
-
-```bash
-.venv/bin/python -m pytest        # 78 tests
-.venv/bin/python -m pytest -q tests/test_recorder.py
-```
-
-The test suite drives the recorder with a fake clock, so session splitting, held-note
-suppression and crash recovery are verified without waiting in real time or needing a
-keyboard.
+## Layout
 
 ```
-app/
-  config.py      settings          db.py      SQLite + search
-  service.py     wiring            auth.py    password + cookie
-  events.py      SSE pub/sub       main.py    FastAPI app and pages
-  midi/
-    events.py    normalised event model, realtime-message filtering
-    recorder.py  session segmentation, durability, crash recovery
-    smf.py       MIDI file rendering, note extraction, stats
-    source.py    backend selection   alsa_source.py / portable_source.py / mock_source.py
-  api/           sessions, tags, settings, status + SSE
-  static/, templates/
+midi_memory/
+  shared/    protocol.py   the contract between the halves: upload, heartbeat, layout
+             auth.py       password + signed cookie
+             config.py     the settings both sides have
+             midi/         events.py (normalised event model), smf.py (MIDI file IO)
+  server/    main.py       FastAPI app and pages
+             db.py         SQLite + search          clients.py  registry, secrets, status
+             events.py     SSE pub/sub              samples.py  the sampled piano
+             api/          sessions, tags, settings, status, clients, ingest
+  client/    main.py       the settings page        capture.py  source → recorder → spool
+             spool.py      the local queue          uploader.py delivery, retries, heartbeat
+             settings_store.py                      midi/       recorder + backends
+  tools/     ports.py (client-side), seed.py (server-side)
 ```
+
+The test suite mirrors it — `tests/shared`, `tests/server`, `tests/client` — and drives
+the recorder with a fake clock, so session splitting, held-note suppression and crash
+recovery are verified without waiting in real time or needing a keyboard. The uploader
+tests run a real client against the real server app over httpx's ASGI transport, so the
+join between the two halves is tested with only the socket replaced.
 
 ## Credits
 
