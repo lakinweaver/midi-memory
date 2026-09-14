@@ -360,6 +360,24 @@
     });
   }
 
+  /* ------------------------------------------------- the header's height -- */
+  // Anything sticking below the header has to know how tall it actually is, and
+  // it is no longer a constant: it grows when the client readouts wrap onto two
+  // rows, and again when a client is added while the page is open.
+  function trackHeaderHeight() {
+    const bar = document.querySelector('.topbar');
+    if (!bar) return;
+    const apply = () => document.documentElement.style.setProperty(
+      '--topbar-h', bar.offsetHeight + 'px');
+    apply();
+    if (window.ResizeObserver) new ResizeObserver(apply).observe(bar);
+    else window.addEventListener('resize', apply);
+  }
+
   window.MM = { api, toast, formatDuration, formatDate, noteName, escapeHtml };
-  document.addEventListener('DOMContentLoaded', () => { startConsole(); startSettings(); });
+  document.addEventListener('DOMContentLoaded', () => {
+    trackHeaderHeight();
+    startConsole();
+    startSettings();
+  });
 })();
