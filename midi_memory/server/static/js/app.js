@@ -183,7 +183,6 @@
       reveal: document.getElementById('secret-reveal'),
       revealFor: document.getElementById('secret-for'),
       revealValue: document.getElementById('secret-value'),
-      revealCopy: document.getElementById('secret-copy'),
     };
 
     const READ_ONLY_LABELS = {
@@ -339,21 +338,6 @@
     f.clientList.addEventListener('click', clientAction);
     f.newName.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); addClient(); }
-    });
-    f.revealCopy.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(f.revealValue.textContent);
-        toast('Secret copied');
-      } catch (_) {
-        // Clipboard access needs a secure context, which plain HTTP on a LAN is
-        // not. Select it instead so it is one keystroke away.
-        const range = document.createRange();
-        range.selectNodeContents(f.revealValue);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        toast('Select and copy the secret above');
-      }
     });
     // Live status should keep the open dialog honest.
     document.addEventListener('midi:client_status', () => {

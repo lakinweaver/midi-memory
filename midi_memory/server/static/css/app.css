@@ -586,7 +586,8 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
   border-radius: var(--r-sm); padding: 10px 12px;
   font-size: 12px; color: var(--cream); word-break: break-all; user-select: all;
 }
-.secret-reveal .btn { justify-self: start; }
+.secret-how { font-size: 11.5px; color: var(--cream-dim); line-height: 1.6; }
+.secret-how b { color: var(--amber); font-weight: 500; white-space: nowrap; }
 
 /* "Recorded by" on a session links back to that client's corner of the library. */
 .from-link { color: var(--amber); text-decoration: none; border-bottom: 1px solid transparent; }

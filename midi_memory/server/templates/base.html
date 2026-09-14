@@ -87,7 +87,12 @@
             <span>This is the only time it is shown. Paste it into the client now.</span>
           </div>
           <code class="secret-value" id="secret-value"></code>
-          <button class="btn" type="button" id="secret-copy">Copy</button>
+          <!-- No copy button: navigator.clipboard needs a secure context, and
+               this is served over plain HTTP on a home network, so it is simply
+               not there to call. The value selects on a single click instead,
+               which is what .secret-value's user-select: all is for. -->
+          <span class="secret-how">Click the secret to select all of it, then
+            copy with <b>&#8984;C</b> or <b>Ctrl&#8209;C</b>.</span>
         </div>
       </section>
 
