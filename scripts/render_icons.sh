@@ -7,7 +7,7 @@
 # brand/ holds the artwork; everything under midi_memory/*/static/brand/ is
 # generated from it and should not be edited by hand. Replace brand/icon.svg
 # with a real logo and run this. The output is committed, so neither the Docker
-# build nor the Pi install needs ImageMagick; only changing the logo does.
+# build nor the Pi install needs these tools; only changing the logo does.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,6 +18,14 @@ TARGETS=(
   "$ROOT/midi_memory/client/static/brand"
 )
 
+# rsvg-convert does the rasterising, not ImageMagick. Homebrew's ImageMagick is
+# built without librsvg, so `magick foo.svg` silently falls back to its own
+# minimal SVG parser, which ignores gradient fills and drops whole paths. That
+# failure is invisible until you open the PNG and find a black square.
+if ! command -v rsvg-convert >/dev/null 2>&1; then
+  echo "This needs librsvg (brew install librsvg)." >&2
+  exit 1
+fi
 if ! command -v magick >/dev/null 2>&1; then
   echo "This needs ImageMagick (brew install imagemagick)." >&2
   exit 1
@@ -28,11 +36,11 @@ for target in "${TARGETS[@]}"; do
   mkdir -p "$target"
   cp "$SOURCE" "$target/icon.svg"
   for size in "${SIZES[@]}"; do
-    # -depth 8: the default is 16-bit, which makes a flat two-colour icon about
-    # six times larger than it has any need to be.
-    magick -background none "$SOURCE" -resize "${size}x${size}" \
-           -depth 8 -strip -define png:compression-level=9 \
-           "$target/icon-${size}.png"
+    # -depth 8: rsvg-convert writes 16-bit channels, which roughly doubles the
+    # file for a gradient no one can see the extra precision in.
+    rsvg-convert -w "$size" -h "$size" -b none "$SOURCE" \
+      | magick - -depth 8 -strip -define png:compression-level=9 \
+               "$target/icon-${size}.png"
   done
   echo "  wrote $(ls "$target" | wc -l | tr -d ' ') files to ${target#$ROOT/}"
 done
