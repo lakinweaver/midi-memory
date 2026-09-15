@@ -337,19 +337,23 @@ their footer. Releasing is one edit.
 
 ### The icon
 
-`brand/icon.svg` is the source: a placeholder mark, the app's ink ground with one amber
-record lamp. Everything under `midi_memory/*/static/brand/` is generated from it and
-should not be edited by hand. Replace it with a real logo and run
+`brand/icon.svg` is the source. Everything under `midi_memory/*/static/brand/` is
+generated from it and should not be edited by hand. Replace it with a real logo and run
 
 ```bash
 ./scripts/render_icons.sh
 ```
 
-which copies it and renders 512/180/32/16px PNGs into both apps' static directories. Those
-files are committed, so neither the Docker build nor the Pi install needs ImageMagick —
-only whoever changes the logo does. Pages link the SVG first and the PNGs as fallbacks,
-stamped with the file's mtime, so a new logo replaces a cached one rather than sitting
-behind it.
+which renders 512/180/32/16px PNGs into both apps' static directories. Those files are
+committed, so neither the Docker build nor the Pi install needs the rendering tools —
+only whoever changes the logo does. That needs librsvg as well as ImageMagick
+(`brew install librsvg imagemagick`): Homebrew's ImageMagick is built without librsvg
+and its own SVG parser drops gradients and whole paths without saying so.
+
+Only the PNGs are served. The SVG is deliberately not copied into either static
+directory — browsers rendered it at favicon sizes noticeably worse than a PNG cut from
+the same geometry. Pages link the 32px PNG and the 180px apple-touch icon, stamped with
+the file's mtime, so a new logo replaces a cached one rather than sitting behind it.
 
 ### Piano samples
 

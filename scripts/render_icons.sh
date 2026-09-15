@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Render brand/icon.svg into both apps' static directories.
+# Render brand/icon.svg into both apps' static directories as PNGs.
 #
 #   ./scripts/render_icons.sh
 #
@@ -8,6 +8,10 @@
 # generated from it and should not be edited by hand. Replace brand/icon.svg
 # with a real logo and run this. The output is committed, so neither the Docker
 # build nor the Pi install needs these tools; only changing the logo does.
+#
+# The SVG stays in brand/ and is never copied to where it would be served. It
+# is the source the PNGs are cut from, nothing more: browsers rendered it at
+# favicon sizes noticeably worse than a PNG resized off the same geometry.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,7 +38,6 @@ fi
 
 for target in "${TARGETS[@]}"; do
   mkdir -p "$target"
-  cp "$SOURCE" "$target/icon.svg"
   for size in "${SIZES[@]}"; do
     # -depth 8: rsvg-convert writes 16-bit channels, which roughly doubles the
     # file for a gradient no one can see the extra precision in.
