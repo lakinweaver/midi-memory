@@ -370,8 +370,54 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .panel-body { padding: 16px; }
 
 /* piano roll */
-.roll-wrap { position: relative; background: var(--ink); border-radius: var(--r-lg) var(--r-lg) 0 0; }
-#roll { display: block; width: 100%; height: 340px; cursor: crosshair; }
+.roll-wrap {
+  position: relative; background: var(--ink); overflow: hidden;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+#roll { display: block; width: 100%; height: 340px; }
+
+/* The scroll layer. Nothing is inside it but a spacer the width of the whole
+   take: the notes are painted on the canvas underneath, at whatever offset this
+   has been scrolled to. Leaving it a native scroller is the point -- it brings
+   iOS momentum, trackpad gestures and arrow keys for free, and lets the browser
+   decide whether a given swipe is panning the roll or scrolling the page. */
+.roll-scroll {
+  position: absolute; inset: 0; overflow-x: auto; overflow-y: hidden;
+  cursor: crosshair;
+  /* Without this, swiping past either end of the roll is the browser's
+     back-navigation gesture, which on a tablet means leaving the page. */
+  overscroll-behavior-x: contain;
+  /* Spelled out rather than left to the browser's own axis arbitration: a
+     sideways swipe pans the roll, an up-or-down one is for the page, and pinch
+     is still the page's zoom. */
+  touch-action: pan-x pinch-zoom;
+}
+.roll-track { height: 100%; }
+.roll-scroll::-webkit-scrollbar { height: 8px; }
+.roll-scroll::-webkit-scrollbar-track { background: transparent; }
+.roll-scroll::-webkit-scrollbar-thumb {
+  background: rgba(232,145,63,.28); border-radius: 100px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+.roll-scroll::-webkit-scrollbar-thumb:hover { background: rgba(232,145,63,.5); background-clip: content-box; }
+
+.roll-zoom {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-top: 1px solid var(--line-soft);
+}
+.roll-zoom-label {
+  font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--faint); margin-right: 6px;
+}
+.roll-zoom .btn { height: 28px; font-size: 11.5px; }
+.roll-zoom .btn.step { width: 28px; padding: 0; font-size: 15px; }
+.roll-zoom #zoom-fit { margin-left: auto; }
+.roll-zoom-value {
+  min-width: 4.5ch; text-align: center;
+  font-size: 11.5px; color: var(--cream-dim); font-variant-numeric: tabular-nums;
+}
+/* Fit is a mode, not a rung: while it is on there is no scale to step. */
+.roll-zoom.fitted .roll-zoom-value { color: var(--faint); }
 
 .transport {
   display: flex; align-items: center; gap: 14px;
@@ -670,6 +716,12 @@ textarea.note-area:focus { border-color: var(--amber-deep); }
   .icon-btn { width: 27px; height: 27px; }
   .transport { flex-wrap: wrap; gap: 10px; }
   .scrub { order: 10; flex-basis: 100%; }
+  /* The label goes; the buttons grow. These are thumb targets here, not the
+     mouse targets they can afford to be on a desktop. */
+  .roll-zoom { padding: 7px 14px; gap: 8px; }
+  .roll-zoom-label { display: none; }
+  .roll-zoom .btn { height: 34px; }
+  .roll-zoom .btn.step { width: 40px; }
   .dur { display: none; }
   .page-title { font-size: 27px; }
   .wordmark span { display: none; }

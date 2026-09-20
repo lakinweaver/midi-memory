@@ -16,6 +16,27 @@
     <div class="panel">
       <div class="roll-wrap">
         <canvas id="roll"></canvas>
+        <!-- A transparent scroller laid over the canvas. The canvas stays the size
+             of the viewport and redraws the visible window, because a canvas wide
+             enough to hold a long take at a readable scale would exceed the
+             browser's maximum dimension. The overlay is what the pointer hits, so
+             click-to-seek lives on it too.
+
+             Deliberately not focusable: a focusable scroller earns a focus ring
+             the moment you click it to seek, and that ring then sits on the roll
+             until something else takes focus. The scrub bar below is the keyboard
+             way through a recording, and the roll follows it. -->
+        <div class="roll-scroll" id="roll-scroll">
+          <div class="roll-track" id="roll-track"></div>
+        </div>
+      </div>
+      <div class="roll-zoom">
+        <span class="roll-zoom-label">Scale</span>
+        <button class="btn ghost step" id="zoom-out" aria-label="Zoom out">&minus;</button>
+        <span class="roll-zoom-value" id="zoom-value" aria-live="polite">—</span>
+        <button class="btn ghost step" id="zoom-in" aria-label="Zoom in">+</button>
+        <button class="btn ghost" id="zoom-fit" aria-pressed="false"
+                title="Fit the whole recording on screen">Fit</button>
       </div>
       <div class="transport">
         <button class="play-btn" id="play" aria-label="Play">
