@@ -4,7 +4,13 @@ from __future__ import annotations
 import json
 
 from midi_memory.shared.midi.events import MidiEvent, parse_bytes
-from midi_memory.client.midi.recorder import EVENTS_FILENAME, Recorder, recover_orphans
+from midi_memory.shared.midi.smf import read_smf
+from midi_memory.client.midi.recorder import (
+    EVENTS_FILENAME,
+    MIDI_FILENAME,
+    Recorder,
+    recover_orphans,
+)
 
 
 def note_on(t, note=60, vel=90):
@@ -138,18 +144,41 @@ def test_crash_recovery_finalizes_an_interrupted_session(settings, clock):
     assert recovered[0].midi_path.exists()
 
 
-def test_recovery_skips_sessions_that_were_already_finalised(settings, clock):
-    """A session with a rendered MIDI file is waiting to upload, not interrupted.
+def test_recovery_skips_sessions_that_were_already_spooled(settings, spool, clock):
+    """A session the spool has taken is the uploader's problem, not recovery's.
 
-    Recovering it again would re-render it and re-queue a take the uploader may
-    already be part-way through sending.
+    `upload.json` is the last write a session gets, so its presence is what
+    means finished -- unlike the rendered MIDI file, which lands partway through.
     """
-    rec = Recorder(settings, clock=clock)
+    rec = Recorder(settings, clock=clock, on_finalized=spool.add)
     play_phrase(rec, clock, notes=8)
     clock.advance(settings.idle_seconds + 1)
     assert rec.tick() is not None
 
     assert recover_orphans(settings) == []
+
+
+def test_recovery_rescues_a_session_whose_render_was_interrupted(settings, clock):
+    """A take cut off while `session.mid` was being written must not be stranded.
+
+    It used to be. Recovery skipped the directory for having a MIDI file, and the
+    spool ignored it for having no `upload.json`, so the session fell down the
+    gap between them and sat on the card forever.
+    """
+    rec = Recorder(settings, clock=clock)
+    play_phrase(rec, clock, notes=8)
+    session_id = rec.current_id
+    directory = settings.spool_dir / session_id
+    rec._pending.handle.flush()
+    # A power cut partway through the render: a header chunk and nothing else.
+    (directory / MIDI_FILENAME).write_bytes(b"MThd\x00\x00\x00\x06\x00\x00")
+
+    recovered = recover_orphans(settings)
+
+    assert [r.id for r in recovered] == [session_id]
+    assert recovered[0].note_count == 8
+    # Re-rendered from the event log, so the truncated file is gone.
+    assert len(read_smf(directory / MIDI_FILENAME)) == 16
 
 
 def test_timestamps_are_relative_to_session_start(settings, clock):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,7 @@ from typing import Callable, Optional, TextIO
 
 from midi_memory.client.config import Settings
 from midi_memory.shared import protocol
+from midi_memory.shared.durable import atomic_write, fsync_dir
 from midi_memory.shared.midi.events import MidiEvent
 from midi_memory.shared.midi.smf import compute_stats, extract_notes, fingerprint, write_smf
 
@@ -26,6 +28,13 @@ log = logging.getLogger(__name__)
 EVENTS_FILENAME = protocol.EVENTS_FILENAME
 MIDI_FILENAME = protocol.MIDI_FILENAME
 META_FILENAME = protocol.META_FILENAME
+UPLOAD_FILENAME = protocol.UPLOAD_FILENAME
+
+# How long a power cut is allowed to cost. Syncing every event would mean a card
+# write per note -- tens of milliseconds, on the thread feeding the recorder --
+# so the loss window is bounded by time instead of by events: at a fortissimo
+# chord that is a dozen notes, at a slow melody it is one.
+FSYNC_SECONDS = 1.0
 
 
 @dataclass(slots=True)
@@ -61,6 +70,7 @@ class _Pending:
     handle: TextIO
     events: list[MidiEvent] = field(default_factory=list)
     device_name: str = ""
+    last_sync: float = 0.0
 
 
 class Recorder:
@@ -118,8 +128,15 @@ class Recorder:
         relative = event.shifted(pending.origin)
         pending.events.append(relative)
         pending.handle.write(json.dumps(relative.to_row(), separators=(",", ":")) + "\n")
-        # Flush every event: a power cut on a Pi should cost at most one note.
+        # Flushing hands the line to the kernel, which is enough to survive this
+        # process dying but not the plug being pulled -- the page cache can sit
+        # unwritten for tens of seconds. fsync is what actually reaches the card,
+        # so it runs on a timer rather than per event; see FSYNC_SECONDS.
         pending.handle.flush()
+        now = self.clock()
+        if now - pending.last_sync >= FSYNC_SECONDS:
+            os.fsync(pending.handle.fileno())
+            pending.last_sync = now
 
         self._track_state(event)
         self._last_activity = max(self._last_activity, event.t)
@@ -164,6 +181,10 @@ class Recorder:
         session_id = uuid.uuid4().hex[:16]
         directory = self.settings.spool_dir / session_id
         directory.mkdir(parents=True, exist_ok=True)
+        # A power cut is no kinder to the directory's entry in the spool than to
+        # the files inside it: without this the whole take can vanish, rather
+        # than merely losing its last second.
+        fsync_dir(self.settings.spool_dir)
         handle = (directory / EVENTS_FILENAME).open("w", encoding="utf-8")
 
         self._pending = _Pending(
@@ -173,20 +194,22 @@ class Recorder:
             origin=event.t,
             handle=handle,
             device_name=self.device_name,
+            last_sync=self.clock(),
         )
         self._last_activity = event.t
         self._held_notes.clear()
         self._sustain_on = False
 
-        # A sidecar so crash recovery knows when this session actually began.
-        (directory / META_FILENAME).write_text(
-            json.dumps({
+        # A sidecar so crash recovery knows when this session actually began --
+        # which makes it worth nothing at all unless it is on the card before
+        # the power goes. Its directory sync also lands the event log's entry,
+        # created just above.
+        with atomic_write(directory / META_FILENAME, "w", encoding="utf-8") as meta:
+            meta.write(json.dumps({
                 "id": session_id,
                 "started_at": self._pending.started_at.isoformat(),
                 "device_name": self._pending.device_name,
-            }),
-            encoding="utf-8",
-        )
+            }))
         log.info("Session %s opened", session_id)
 
     def finalize(self) -> Optional[SessionRecord]:
@@ -198,6 +221,13 @@ class Recorder:
         self._held_notes.clear()
         self._sustain_on = False
 
+        # The closing phrase is the part most likely to be lost, since it is the
+        # newest: sync before handing the directory on to be rendered.
+        try:
+            pending.handle.flush()
+            os.fsync(pending.handle.fileno())
+        except OSError:
+            log.warning("Could not sync the event log for session %s", pending.id)
         try:
             pending.handle.close()
         except OSError:
@@ -304,16 +334,24 @@ def finalize_directory(
 def recover_orphans(settings: Settings) -> list[SessionRecord]:
     """Finalise spool directories that were interrupted before they were closed.
 
-    A directory holding an event log but no rendered MIDI file was still being
-    written when the process died. Finalising it here, through exactly the same
-    path the live recorder uses, means a power cut costs nothing but the silence
-    at the end of the take.
+    A directory holding an event log but no `upload.json` was still being written
+    when the process died. Finalising it here, through exactly the same path the
+    live recorder uses, means a power cut costs nothing but the silence at the
+    end of the take.
+
+    The test is for `upload.json` and not for the rendered MIDI file, because
+    the MIDI file appears partway through finishing a session while `upload.json`
+    is the last write it gets. Keyed on the MIDI file, a take interrupted during
+    rendering was skipped here for looking finished and ignored by the spool for
+    having no `upload.json` -- stranded on disk, invisible to both. Re-rendering
+    a session that merely never got spooled is harmless: it is derived entirely
+    from the event log, and the server dedupes on the id either way.
     """
     recovered: list[SessionRecord] = []
     if not settings.spool_dir.exists():
         return recovered
     for directory in sorted(settings.spool_dir.iterdir()):
-        if not directory.is_dir() or (directory / MIDI_FILENAME).exists():
+        if not directory.is_dir() or (directory / UPLOAD_FILENAME).exists():
             continue
         if not (directory / EVENTS_FILENAME).exists():
             continue

@@ -22,12 +22,12 @@ from midi_memory.client.midi.recorder import (
     EVENTS_FILENAME,
     MIDI_FILENAME,
     SessionRecord,
+    UPLOAD_FILENAME,
 )
+from midi_memory.shared.durable import atomic_write
 from midi_memory.shared.protocol import SessionUpload
 
 log = logging.getLogger(__name__)
-
-UPLOAD_FILENAME = "upload.json"
 
 
 class SpooledSession:
@@ -61,14 +61,16 @@ class Spool:
     def add(self, record: SessionRecord) -> SpooledSession:
         """Mark a finalised recording as ready to upload.
 
-        Written to a temporary name and renamed, so a crash mid-write cannot
-        leave a half-written payload that the uploader would then reject forever.
+        Written to a temporary name, synced, and renamed, so a crash mid-write
+        cannot leave a half-written payload that the uploader would then reject
+        forever. The sync is not redundant with the rename: a rename can reach
+        the card while the contents it points at are still in the page cache,
+        which is how you end up with a file full of zeros.
         """
         payload = SessionUpload.from_record(record)
         directory = record.directory
-        tmp = directory / (UPLOAD_FILENAME + ".tmp")
-        tmp.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
-        tmp.replace(directory / UPLOAD_FILENAME)
+        with atomic_write(directory / UPLOAD_FILENAME, "w", encoding="utf-8") as handle:
+            handle.write(payload.model_dump_json(indent=2))
         log.info("Spooled session %s (%d notes) for upload", record.id, record.note_count)
         return SpooledSession(directory)
 

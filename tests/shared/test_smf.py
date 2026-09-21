@@ -1,6 +1,9 @@
 """MIDI file rendering, note extraction, and the sustain-pedal distinction."""
 from __future__ import annotations
 
+import mido
+import pytest
+
 from midi_memory.shared.midi.events import MidiEvent
 from midi_memory.shared.midi.smf import (
     compute_stats,
@@ -9,6 +12,26 @@ from midi_memory.shared.midi.smf import (
     read_smf,
     write_smf,
 )
+
+
+def test_a_failed_render_leaves_no_file_at_all(tmp_path, monkeypatch):
+    """This file's existence marks a take as rendered, so a torn one is a lie.
+
+    Crash recovery reads it as "already finished", which is only safe if the
+    file cannot exist until it is complete.
+    """
+    path = tmp_path / "session.mid"
+
+    def die_halfway(self, file):
+        file.write(b"MThd\x00\x00\x00\x06")
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(mido.MidiFile, "_save", die_halfway)
+    with pytest.raises(OSError):
+        write_smf([MidiEvent(0.0, 0x90, 60, 90)], path, name="interrupted")
+
+    assert not path.exists()
+    assert list(tmp_path.iterdir()) == []   # and no leftover temporary either
 
 
 def test_midi_file_round_trips(tmp_path):

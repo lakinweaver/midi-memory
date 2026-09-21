@@ -7,6 +7,7 @@ from typing import Iterable, Sequence
 
 import mido
 
+from midi_memory.shared.durable import atomic_write
 from midi_memory.shared.midi.events import (
     CC_ALL_NOTES_OFF,
     CC_SOSTENUTO,
@@ -76,7 +77,12 @@ def write_smf(events: Sequence[MidiEvent], path: Path, name: str = "") -> None:
 
     track.append(mido.MetaMessage("end_of_track", time=1))
     path.parent.mkdir(parents=True, exist_ok=True)
-    mf.save(path)
+    # Atomic because this file's *existence* is what marks a take as rendered.
+    # Written in place, a power cut mid-save left a truncated file that crash
+    # recovery read as "already finished" while the spool, seeing no upload.json,
+    # read it as "not ready" -- and the session fell down the gap between them.
+    with atomic_write(path) as handle:
+        mf.save(file=handle)
 
 
 def read_smf(path: Path) -> list[MidiEvent]:

@@ -23,6 +23,11 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 EVENTS_FILENAME = "events.jsonl"
 MIDI_FILENAME = "session.mid"
 META_FILENAME = "meta.json"
+# The client's own marker rather than anything the server keeps: it is the last
+# write a session gets, so its presence is what separates a finished take from
+# one that crash recovery still has to finish. The recorder and the spool both
+# test for it, which is why it lives here rather than in either of them.
+UPLOAD_FILENAME = "upload.json"
 
 
 class SessionUpload(BaseModel):
